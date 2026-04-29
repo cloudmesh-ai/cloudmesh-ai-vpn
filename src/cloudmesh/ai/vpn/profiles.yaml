@@ -1,0 +1,17 @@
+# Example VPN Profiles
+# This file serves as a template for ~/.cloudmesh/vpn/profiles.yaml
+profiles:
+  # Standard profile using organization defaults
+  default:
+    user: TBD
+    service: uva
+    provider: openconnect-decrypted
+    nosplit: true
+
+  # Profile with an attribute override (e.g., using a different host and username)
+  test-vpn:
+    service: uva
+    user: my-test-user
+    host: test-vpn.uva.edu
+    provider: openconnect-keychain
+    nosplit: false
