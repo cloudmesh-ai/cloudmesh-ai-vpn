@@ -4,16 +4,17 @@ import time
 import sys
 import json
 from typing import Any, Dict, Optional, Union, List
-import yaml
 
 import requests
 import keyring as kr
 
-from cloudmesh.ai.common.io import console
-from rich.console import Console as RichConsole
+from cloudmesh.ai.common.io import console, load_yaml
+from cloudmesh.ai.common.logging_utils import get_contextual_logger
 from rich.table import Table
 from rich.box import ROUNDED
 from cloudmesh.ai.common.sys import os_is_linux, os_is_mac, os_is_windows
+
+logger = get_contextual_logger("vpn")
 
 from cloudmesh.ai.vpn.organizations import organizations as org_config
 
@@ -32,9 +33,8 @@ def get_organizations() -> Dict[str, Any]:
     """Load and validate VPN Organization Configurations from YAML."""
     if not hasattr(get_organizations, "_cache"):
         org_file = os.path.join(os.path.dirname(__file__), "organizations.yaml")
-        with open(org_file, "r") as f:
-            data = yaml.safe_load(f)
-            orgs = data.get("cloudmesh", {}).get("vpn", {})
+        data = load_yaml(org_file)
+        orgs = data.get("cloudmesh", {}).get("vpn", {})
 
         # Validate organization configurations
         required_keys = ["host", "connection_check"]
@@ -131,7 +131,7 @@ class Vpn:
 
     def _debug(self, msg: str) -> None:
         if self.debug:
-            print(msg)
+            logger.debug(msg)
 
     def is_user_auth(self, org: str) -> bool:
         return organizations[org.lower()]["user"]
@@ -283,7 +283,7 @@ class Vpn:
             for key, value in data.items():
                 table.add_row(key, str(value))
 
-            RichConsole().print(table)
+            console.print(table)
             return json.dumps(data, indent=2)
         except Exception as e:
             console.error(f"Failed to render IP info table: {e}")

@@ -4,7 +4,7 @@ import psutil
 import pexpect
 from typing import Any, Dict, List, Union, Optional
 
-from cloudmesh.common.Shell import Shell
+from cloudmesh.ai.common.Shell import Shell
 from cloudmesh.ai.common.io import console
 from cloudmesh.ai.vpn.strategies.base import VpnOSStrategy
 from cloudmesh.ai.vpn.organizations import organizations

@@ -1,9 +1,8 @@
 import os
-import yaml
 from typing import Any, Dict, Optional
-from cloudmesh.ai.common.io import Console
+from cloudmesh.ai.common.io import console, path_expand, load_yaml, dump_yaml
 
-PROFILES_FILE = os.path.expanduser("~/.cloudmesh/vpn/profiles.yaml")
+PROFILES_FILE = path_expand("~/.cloudmesh/vpn/profiles.yaml")
 
 def load_profiles() -> Dict[str, Any]:
     """Load VPN profiles from the YAML file."""
@@ -11,21 +10,19 @@ def load_profiles() -> Dict[str, Any]:
         return {}
     
     try:
-        with open(PROFILES_FILE, "r") as f:
-            data = yaml.safe_load(f)
-            return data.get("profiles", {}) if data else {}
+        data = load_yaml(PROFILES_FILE)
+        return data.get("profiles", {}) if data else {}
     except Exception as e:
-        Console.error(f"Failed to load profiles: {e}")
+        console.error(f"Failed to load profiles: {e}")
         return {}
 
 def save_profiles(profiles: Dict[str, Any]) -> None:
     """Save VPN profiles to the YAML file."""
     try:
         os.makedirs(os.path.dirname(PROFILES_FILE), exist_ok=True)
-        with open(PROFILES_FILE, "w") as f:
-            yaml.dump({"profiles": profiles}, f)
+        dump_yaml({"profiles": profiles}, PROFILES_FILE)
     except Exception as e:
-        Console.error(f"Failed to save profiles: {e}")
+        console.error(f"Failed to save profiles: {e}")
 
 def add_profile(name: str, service: str, **kwargs) -> bool:
     """Add or update a VPN profile.

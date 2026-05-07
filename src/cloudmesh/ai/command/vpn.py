@@ -68,7 +68,7 @@ Description:
 import click
 import logging
 import sys
-from cloudmesh.ai.common.logging import get_logger
+from cloudmesh.ai.common.logging_utils import get_contextual_logger
 from cloudmesh.ai.common.io import console
 from rich.live import Live
 from rich.panel import Panel
@@ -79,7 +79,7 @@ from cloudmesh.ai.vpn.vpn import Vpn
 from cloudmesh.ai.vpn import profiles
 
 # Initialize Logger
-logger = get_logger("vpn")
+logger = get_contextual_logger("vpn")
 
 
 @click.group()

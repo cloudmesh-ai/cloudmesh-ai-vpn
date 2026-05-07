@@ -7,7 +7,7 @@ Functions:
     win_install: Installs Cisco AnyConnect VPN client based on the operating system (Windows or macOS).
 
 """
-from cloudmesh.common.Shell import Shell
+from cloudmesh.ai.common.Shell import Shell
 from cloudmesh.ai.common.io import Console
 from cloudmesh.ai.common.sys import os_is_linux
 from cloudmesh.ai.common.sys import os_is_mac

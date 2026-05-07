@@ -35,12 +35,12 @@ class WindowsVpnStrategy(VpnOSStrategy):
                 check=False,
             )
         try:
-            from cloudmesh.common.Shell import Shell
+            from cloudmesh.ai.common.Shell import Shell
             Shell.run("net stop csc_vpnagent")
         except Exception:
             pass
         try:
-            from cloudmesh.common.Shell import Shell
+            from cloudmesh.ai.common.Shell import Shell
             Shell.run("net start csc_vpnagent")
         except Exception:
             pass
@@ -116,7 +116,7 @@ class WindowsVpnStrategy(VpnOSStrategy):
 
         elif organizations[vpn_name]["auth"] == "cert":
             try:
-                from cloudmesh.common.Shell import Shell
+                from cloudmesh.ai.common.Shell import Shell
                 r = Shell.run("list-system-keys")
             except RuntimeError:
                 console.error("Certificate keys not found. Please install certificate.")

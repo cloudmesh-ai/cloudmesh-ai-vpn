@@ -234,10 +234,10 @@ class MacOpenConnectPwStrategy(VpnOSStrategy):
             except Exception as e:
                 console.error(f"Error during targeted disconnect: {e}")
         else:
-            from cloudmesh.common.Shell import Shell
+            from cloudmesh.ai.common.Shell import Shell
             Shell.run("sudo pkill -SIGINT openconnect")
         
-        from cloudmesh.common.Shell import Shell
+        from cloudmesh.ai.common.Shell import Shell
         try:
             Shell.run("sudo pkill vpn-slice")
         except Exception:
