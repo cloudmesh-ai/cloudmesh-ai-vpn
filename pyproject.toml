@@ -13,6 +13,7 @@ dependencies = [
     "click",
     "rich",
     "pytest",
+    "pexpect",
     "cloudmesh-ai-common",
 ]
 [tool.setuptools.dynamic]
