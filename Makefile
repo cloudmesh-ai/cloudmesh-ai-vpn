@@ -41,11 +41,11 @@ requirements:
 	pip-compile --output-file=requirements.txt pyproject.toml
 
 test:
-	pytest -v --html=.report.html tests/
+	VPN_MOCK=1 pytest -v --html=.report.html tests/
 	open .report.html
 
 test-cov:
-	pytest --cov=cloudmesh.ai.command.vpn --cov-report=term-missing tests/
+	VPN_MOCK=1 pytest --cov=cloudmesh.ai.command.vpn --cov-report=term-missing tests/
 
 setup-test:
 	$(PIP) install pytest pytest-mock pytest-cov pytest-html

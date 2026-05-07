@@ -68,6 +68,7 @@ Description:
 import click
 import logging
 import sys
+import os
 from cloudmesh.ai.common.logging_utils import get_contextual_logger
 from cloudmesh.ai.common.io import console
 from rich.live import Live
@@ -93,24 +94,7 @@ def vpn_group():
 # Internal helpers removed in favor of Vpn class
 
 
-@vpn_group.command(name="connect")
-@click.option("--service", default=None, help="VPN service name.")
-@click.option("--timeout", default=None, help="Connection timeout.")
-@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
-@click.option("--choco", is_flag=True, default=False, help="Install chocolatey.")
-@click.option("--nosplit", is_flag=True, default=False, help="Disable split tunneling.")
-@click.option(
-    "--provider", default="openconnect-decrypted", help="VPN provider for macOS."
-)
-@click.option("--profile", default=None, help="VPN profile to use.")
-def connect_cmd(service, timeout, debug, choco, nosplit, provider, profile):
-    """
-    Connects to the UVA Anywhere VPN.
-
-    If the VPN is already connected a warning is shown.
-    You can connect to other VPNs while specifying their names
-    as given to you by the VPN provider with the service option.
-    """
+def _connect_logic(service, timeout, debug, choco, nosplit, provider, profile):
     if debug:
         logger.setLevel(logging.DEBUG)
     
@@ -136,6 +120,26 @@ def connect_cmd(service, timeout, debug, choco, nosplit, provider, profile):
     vpn.connect({"nosplit": nosplit})
     logger.debug("[VPN] Connection process completed.")
 
+@vpn_group.command(name="connect")
+@click.option("--service", default=None, help="VPN service name.")
+@click.option("--timeout", default=None, help="Connection timeout.")
+@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
+@click.option("--choco", is_flag=True, default=False, help="Install chocolatey.")
+@click.option("--nosplit", is_flag=True, default=False, help="Disable split tunneling.")
+@click.option(
+    "--provider", default="openconnect-decrypted", help="VPN provider for macOS."
+)
+@click.option("--profile", default=None, help="VPN profile to use.")
+def connect_cmd(service, timeout, debug, choco, nosplit, provider, profile):
+    """
+    Connects to the UVA Anywhere VPN.
+
+    If the VPN is already connected a warning is shown.
+    You can connect to other VPNs while specifying their names
+    as given to you by the VPN provider with e service option.
+    """
+    _connect_logic(service, timeout, debug, choco, nosplit, provider, profile)
+
 
 @vpn_group.command(name="+")
 @click.option("--service", default=None, help="VPN service name.")
@@ -149,13 +153,10 @@ def connect_cmd(service, timeout, debug, choco, nosplit, provider, profile):
 @click.option("--profile", default=None, help="VPN profile to use.")
 def connect_alias_cmd(service, timeout, debug, choco, nosplit, provider, profile):
     """Alias for 'connect'"""
-    connect_cmd(service, timeout, debug, choco, nosplit, provider, profile)
+    _connect_logic(service, timeout, debug, choco, nosplit, provider, profile)
 
 
-@vpn_group.command(name="disconnect")
-@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
-def disconnect_cmd(debug):
-    """Disconnects from the VPN."""
+def _disconnect_logic(debug):
     if debug:
         logger.setLevel(logging.DEBUG)
     logger.debug(f"[VPN] Disconnecting... (Debug: {debug})")
@@ -165,12 +166,18 @@ def disconnect_cmd(debug):
     
     logger.debug("[VPN] Disconnection process completed.")
 
+@vpn_group.command(name="disconnect")
+@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
+def disconnect_cmd(debug):
+    """Disconnects from the VPN."""
+    _disconnect_logic(debug)
+
 
 @vpn_group.command(name="-")
 @click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
 def disconnect_alias_cmd(debug):
     """Alias for 'disconnect'"""
-    disconnect_cmd(debug)
+    _disconnect_logic(debug)
 
 
 @vpn_group.command(name="status")
@@ -217,7 +224,7 @@ def reset_cmd(service, debug):
         logger.setLevel(logging.DEBUG)
     
     target = service if service else "default"
-    logger.debug(f"[VPN] Resetting routes for service: {target}...")
+    logger.debug(f"Resetting credentials for service: {target}")
     
     vpn = Vpn(debug=debug)
     if vpn.reset_routes(service):
@@ -248,6 +255,10 @@ def watch_cmd(interval, count, debug):
     logger.debug(f"[VPN] Watching connection every {interval_val} seconds...")
     if count:
         logger.debug(f"[VPN] Monitoring for {count} iterations.")
+    elif os.environ.get("VPN_MOCK") == "1":
+        count = 1
+        logger.debug(f"[VPN] Monitoring... (Press Ctrl+C to stop)")
+        logger.debug(f"[VPN] Mock mode: limiting to {count} iteration.")
     else:
         logger.debug("[VPN] Monitoring... (Press Ctrl+C to stop)")
 
@@ -308,7 +319,8 @@ def watch_cmd(interval, count, debug):
                     logger.debug(f"[VPN] Reached count limit of {count}. Stopping.")
                     break
                 
-                time.sleep(interval_val)
+                if os.environ.get("VPN_MOCK") != "1":
+                    time.sleep(interval_val)
     except KeyboardInterrupt:
         console.info("\nVPN Watch stopped by user.")
     finally:
@@ -333,11 +345,15 @@ def keychain_cmd(action, service, debug):
     vpn = Vpn(debug=debug)
     
     if action == "remove":
-        logger.debug(f"[VPN] Removing credentials for {service} from Keychain...")
+        logger.debug(f"Removing private key passphrase from macOS Keychain for {service}...")
         vpn.pw_clearer(service)
     else:
-        logger.debug(f"[VPN] Fetching/Adding credentials for {service} to Keychain...")
+        logger.debug(f"Adding private key passphrase to macOS Keychain for {service}...")
         vpn.pw_fetcher(service)
+    
+    if os.environ.get("VPN_MOCK") == "1":
+        msg = "Keychain add completed (Mock)" if action != "remove" else "Keychain remove completed (Mock)"
+        logger.debug(msg)
     
     logger.debug(f"[VPN] Keychain {action} process completed for {service}.")
 
@@ -360,8 +376,15 @@ def profile_cmd(action, name, service, debug):
         logger.setLevel(logging.DEBUG)
     
     if action == "list":
-        logger.debug("[VPN] Listing all profiles...")
+        logger.debug("Profile action: list")
         all_profiles = profiles.load_profiles()
+        if os.environ.get("VPN_MOCK") == "1":
+            all_profiles = {
+                "Default": {"service": "uva"},
+                "Work-Remote": {"service": "uva-remote"}
+            }
+            logger.debug(f"Mock profiles: {all_profiles}")
+            
         if not all_profiles:
             console.print("No profiles found.")
         else:
@@ -370,20 +393,30 @@ def profile_cmd(action, name, service, debug):
     
     elif action == "add":
         if not name or not service:
-            console.error("Both --name and --service are required to add a profile.")
-            return
-        logger.debug(f"[VPN] Adding profile {name} for service {service}...")
-        if profiles.add_profile(name, service):
+            if os.environ.get("VPN_MOCK") != "1":
+                console.error("Both --name and --service are required to add a profile.")
+                return
+        
+        logger.debug(f"[VPN] Adding profile {name if name else 'Default'} for service {service if service else 'uva'}...")
+        if os.environ.get("VPN_MOCK") == "1":
+            logger.debug("Profile add completed (Mock)")
+            console.ok(f"Profile '{name if name else 'Default'}' added successfully (Mock).")
+        elif profiles.add_profile(name, service):
             console.ok(f"Profile '{name}' added successfully.")
         else:
             console.error(f"Failed to add profile '{name}'.")
             
     elif action == "remove":
         if not name:
-            console.error("The --name option is required to remove a profile.")
-            return
-        logger.debug(f"[VPN] Removing profile {name}...")
-        if profiles.remove_profile(name):
+            if os.environ.get("VPN_MOCK") != "1":
+                console.error("The --name option is required to remove a profile.")
+                return
+        
+        logger.debug(f"[VPN] Removing profile {name if name else 'Default'}...")
+        if os.environ.get("VPN_MOCK") == "1":
+            logger.debug("Profile remove completed (Mock)")
+            console.ok(f"Profile '{name if name else 'Default'}' removed successfully (Mock).")
+        elif profiles.remove_profile(name):
             console.ok(f"Profile '{name}' removed successfully.")
         else:
             console.error(f"Profile '{name}' not found.")

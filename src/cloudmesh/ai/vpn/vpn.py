@@ -27,6 +27,7 @@ from cloudmesh.ai.vpn.strategies.mac_openconnect_keychain import (
     MacOpenConnectKeychainStrategy,
 )
 from cloudmesh.ai.vpn.strategies.mac_openconnect_pw import MacOpenConnectPwStrategy
+from cloudmesh.ai.vpn.strategies.mock import MockVpnStrategy
 
 
 def get_organizations() -> Dict[str, Any]:
@@ -86,7 +87,7 @@ class Vpn:
             self.service = "UVA Anywhere"
         else:
             service_lower = service.lower()
-            if service_lower not in organizations:
+            if service_lower not in organizations and os.environ.get("VPN_MOCK") != "1":
                 available = ", ".join(organizations.keys())
                 raise ValueError(
                     f"Invalid VPN service '{service}'. Available: {available}"
@@ -101,7 +102,9 @@ class Vpn:
         self.config = merged_config
 
         # 4. Strategy Selection
-        if os_is_windows():
+        if os.environ.get("VPN_MOCK") == "1":
+            self.strategy = MockVpnStrategy(self)
+        elif os_is_windows():
             self.strategy = WindowsVpnStrategy(self)
         elif os_is_mac():
             # Use provider from merged config if available, otherwise from argument
@@ -232,6 +235,11 @@ class Vpn:
 
     def info(self) -> str:
         """Display current IP information in a rich table using multiple fallback providers."""
+        if os.environ.get("VPN_MOCK") == "1":
+            logger.debug("[VPN Info] Location: UVA Campus")
+            logger.debug("[VPN Info] IP: 128.118.x.x")
+            return '{"location": "UVA Campus", "ip": "128.118.x.x"}'
+
         providers = [
             {"url": "https://ipinfo.io/json", "type": "json"},
             {"url": "https://ifconfig.me/all.json", "type": "json"},
@@ -290,6 +298,9 @@ class Vpn:
             return ""
 
     def pw_fetcher(self, org: str):
+        if os.environ.get("VPN_MOCK") == "1":
+            return "mock-user", "mock-password"
+
         if org not in organizations:
             console.error(f"Unknown service {org}")
             return False
@@ -330,6 +341,10 @@ class Vpn:
         return False
 
     def pw_clearer(self, org: str):
+        if os.environ.get("VPN_MOCK") == "1":
+            console.ok(f"Credentials for {org} have been cleared (Mock).")
+            return True
+
         if org not in organizations:
             console.error(f"Unknown service {org}")
             return False
