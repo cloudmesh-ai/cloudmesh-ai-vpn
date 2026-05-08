@@ -1,4 +1,3 @@
-e
 """
 Cloudmesh AI VPN Extension
 ==========================
@@ -373,7 +372,18 @@ def search_cmd(org, debug):
     url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
     
     logger.info(f"[VPN Search] Searching for: {query}")
-    console.info(f"Opening browser to search for {org} VPN IP ranges...")
+    
+    # ASCII Presentation
+    ascii_banner = f"""
+    +-------------------------------------------------------+
+    |                VPN ORGANIZATION SEARCH                |
+    +-------------------------------------------------------+
+    | Organization: {org:<35} |
+    | Search Query: {query:<35} |
+    | Action:       Opening Web Browser...                  |
+    +-------------------------------------------------------+
+    """
+    console.print(ascii_banner)
     
     webbrowser.open(url)
 

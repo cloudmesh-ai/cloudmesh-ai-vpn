@@ -20,7 +20,10 @@ from cloudmesh.ai.vpn.organizations import organizations as org_config
 
 from cloudmesh.ai.vpn.strategies.windows import WindowsVpnStrategy
 from cloudmesh.ai.vpn.strategies.linux import LinuxVpnStrategy
-from cloudmesh.ai.vpn.strategies.mac import MacVpnStrategy
+from cloudmesh.ai.vpn.strategies.mac_openconnect_decrypted import MacOpenConnectDecryptedStrategy
+from cloudmesh.ai.vpn.strategies.mac_openconnect_pw import MacOpenConnectPwStrategy
+from cloudmesh.ai.vpn.strategies.mac_openconnect_keychain import MacOpenConnectKeychainStrategy
+from cloudmesh.ai.vpn.strategies.mac_cisco import MacCiscoStrategy
 from cloudmesh.ai.vpn.strategies.mock import MockVpnStrategy
 
 
@@ -101,7 +104,17 @@ class Vpn:
         elif os_is_windows():
             self.strategy = WindowsVpnStrategy(self)
         elif os_is_mac():
-            self.strategy = MacVpnStrategy(self)
+            # Map provider to concrete strategy
+            mac_strategies = {
+                "openconnect-decrypted": MacOpenConnectDecryptedStrategy,
+                "openconnect-pw": MacOpenConnectPwStrategy,
+                "openconnect-keychain": MacOpenConnectKeychainStrategy,
+                "cisco": MacCiscoStrategy,
+            }
+            
+            provider_key = provider if provider else "openconnect-decrypted"
+            strategy_class = mac_strategies.get(provider_key, MacOpenConnectDecryptedStrategy)
+            self.strategy = strategy_class(self)
 
             console.msg(f"Selected VPN Strategy: {self.strategy.__class__.__name__}")
         elif os_is_linux():
