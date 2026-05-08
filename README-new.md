@@ -219,6 +219,39 @@ For the `openconnect-decrypted` and `openconnect-keychain` providers to work wit
 └── decrypted_user.pem # Decrypted PEM (for decrypted provider)
 ```
 
+### 🎓 UVA Custom Configuration
+If you are a UVA user and need to override the default organization settings, you can use a custom YAML configuration file.
+
+**Customizing your Identity**:
+To ensure the VPN connects with your specific credentials, locate the `organizations.yaml` file (or your custom override) and update the `username` field:
+
+```yaml
+uva:
+  username: "your_computing_id"  # <--- Change this to your UVA Computing ID
+  auth: cert
+  name: UVA Anywhere
+  host: uva-anywhere-1.itc.virginia.edu
+  user: false
+  2fa: false
+  group: false
+  keychain: true
+  cert:
+    - ~/.ssh/uva/user.pem
+  ip: 
+    - rivanna.hpc.virginia.edu 
+    - 128.143.0.0/16 
+    - 137.54.0.0/16
+    - 199.111.0.0/16
+    - 199.111.160.0/19
+    - 199.111.192.0/18
+  domain: virginia.edu
+  connection_check:
+    - University of Virginia
+    - UVA
+```
+
+By updating this value, the extension will automatically use your identity across all connection attempts without requiring manual flags.
+
 ---
 
 ## Authors
