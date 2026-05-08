@@ -13,7 +13,7 @@ GIT          := git
 PYENVVERSION := $(shell pyenv version-name)
 
 .PHONY: help install clean build test reinstall \
-        check tag release test test-cov setup-test uninstall-all \
+        check tag release test-html test-cov setup-test uninstall-all \
         tmp-setup sync
 
 help:
@@ -42,11 +42,14 @@ requirements:
 	pip-compile --output-file=requirements.txt pyproject.toml
 
 test:
-	VPN_MOCK=1 pytest -v --html=.report.html tests/
+	VPN_MOCK=1 $(PYTHON) -m pytest -v tests/
+
+test-html:
+	VPN_MOCK=1 $(PYTHON) -m pytest -v --html=.report.html tests/
 	open .report.html
 
 test-cov:
-	VPN_MOCK=1 pytest --cov=cloudmesh.ai.command.vpn --cov-report=term-missing tests/
+	VPN_MOCK=1 $(PYTHON) -m pytest --cov=cloudmesh.ai.command.vpn --cov-report=term-missing tests/
 
 setup-test:
 	$(PIP) install pytest pytest-mock pytest-cov pytest-html
