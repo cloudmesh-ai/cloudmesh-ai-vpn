@@ -16,39 +16,18 @@ from cloudmesh.ai.common.sys import os_is_linux, os_is_mac, os_is_windows
 
 logger = get_contextual_logger("vpn")
 
+
+class VpnDependencyError(Exception):
+    """Exception raised when a required VPN dependency is missing."""
+    pass
+
 from cloudmesh.ai.vpn.organizations import organizations as org_config
 
-from cloudmesh.ai.vpn.strategies.windows import WindowsVpnStrategy
-from cloudmesh.ai.vpn.strategies.linux import LinuxVpnStrategy
-from cloudmesh.ai.vpn.strategies.mac_openconnect_decrypted import MacOpenConnectDecryptedStrategy
-from cloudmesh.ai.vpn.strategies.mac_openconnect_pw import MacOpenConnectPwStrategy
-from cloudmesh.ai.vpn.strategies.mac_openconnect_keychain import MacOpenConnectKeychainStrategy
-from cloudmesh.ai.vpn.strategies.mac_cisco import MacCiscoStrategy
-from cloudmesh.ai.vpn.strategies.mock import MockVpnStrategy
+from cloudmesh.ai.vpn.factory import get_vpn_strategy_class
+from cloudmesh.ai.vpn.key_manager import KeyManager
+from cloudmesh.ai.vpn.config import VpnConfig
 
 
-def get_organizations() -> Dict[str, Any]:
-    """Load and validate VPN Organization Configurations from YAML."""
-    if not hasattr(get_organizations, "_cache"):
-        org_file = os.path.join(os.path.dirname(__file__), "organizations.yaml")
-        data = load_yaml(org_file)
-        orgs = data.get("cloudmesh", {}).get("vpn", {})
-
-        # Validate organization configurations
-        required_keys = ["host", "connection_check"]
-        for org, config in orgs.items():
-            missing_keys = [key for key in required_keys if key not in config]
-            if missing_keys:
-                raise ValueError(
-                    f"Malformed configuration for organization '{org}': "
-                    f"Missing required keys: {', '.join(missing_keys)}"
-                )
-        get_organizations._cache = orgs
-    return get_organizations._cache
-
-
-# For backward compatibility with existing code that uses 'organizations' globally
-organizations = get_organizations()
 
 
 class Vpn:
@@ -66,86 +45,42 @@ class Vpn:
         self.debug = debug
         self.profile_name = profile_name
 
-        # 1. Profile Handling
-        self.config = {}
-        if profile_name:
-            from cloudmesh.ai.vpn import profiles
+        # Use VpnConfig for flexible configuration loading and merging
+        self.vpn_config = VpnConfig(service=service, profile_name=profile_name)
+        self.service_key = self.vpn_config.service.lower()
+        self.service = self.vpn_config.service
+        self.config = self.vpn_config.config
 
-            profile = profiles.get_profile(profile_name)
-            if profile:
-                # Use service from profile if available
-                service = profile.get("service", service)
-                # Start with profile attributes
-                self.config.update(profile)
+        # Strategy Selection
+        strategy_class = get_vpn_strategy_class(provider)
+        self.strategy = strategy_class(self)
 
-        # 2. Service Configuration
-        if service is None or service == "uva":
-            self.service_key = "uva"
-            self.service = "UVA Anywhere"
-        else:
-            service_lower = service.lower()
-            if service_lower not in organizations and os.environ.get("VPN_MOCK") != "1":
-                available = ", ".join(organizations.keys())
-                raise ValueError(
-                    f"Invalid VPN service '{service}'. Available: {available}"
-                )
-            self.service_key = service_lower
-            self.service = service
-
-        # 3. Merge Organization defaults into config (Profile overrides Org)
-        org_config = organizations.get(self.service_key, {})
-        merged_config = org_config.copy()
-        merged_config.update(self.config)
-        self.config = merged_config
-
-        # 4. Strategy Selection
-        if os.environ.get("VPN_MOCK") == "1":
-            self.strategy = MockVpnStrategy(self)
-        elif os_is_windows():
-            self.strategy = WindowsVpnStrategy(self)
-        elif os_is_mac():
-            # Map provider to concrete strategy
-            mac_strategies = {
-                "openconnect-decrypted": MacOpenConnectDecryptedStrategy,
-                "openconnect-pw": MacOpenConnectPwStrategy,
-                "openconnect-keychain": MacOpenConnectKeychainStrategy,
-                "cisco": MacCiscoStrategy,
-            }
-            
-            provider_key = provider if provider else "openconnect-decrypted"
-            strategy_class = mac_strategies.get(provider_key, MacOpenConnectDecryptedStrategy)
-            self.strategy = strategy_class(self)
-
+        if os_is_mac():
             console.msg(f"Selected VPN Strategy: {self.strategy.__class__.__name__}")
-        elif os_is_linux():
-            self.strategy = LinuxVpnStrategy(self)
-        else:
-            raise NotImplementedError("OS is not supported")
 
     def _debug(self, msg: str) -> None:
         if self.debug:
             logger.debug(msg)
 
     def is_user_auth(self, org: str) -> bool:
-        return organizations[org.lower()]["user"]
+        # Use a temporary config for the requested org to check auth
+        temp_config = VpnConfig(service=org)
+        return temp_config.get("user", False)
 
     def enabled(self) -> bool:
         return self.strategy.is_enabled()
 
-    def connect(self, *args: Any) -> Union[bool, str, None]:
-        if args:
-            creds = args[0]
-            no_split = creds.get("nosplit", True)
-            vpn_name = creds.get("service", "uva")
-        else:
+    def connect(self, creds: Optional[Dict[str, Any]] = None, progress_callback: Optional[callable] = None) -> Union[bool, str, None]:
+        if creds is None:
             creds = {}
-            no_split = True
-            vpn_name = "uva"
+        
+        no_split = creds.get("nosplit", True)
+        vpn_name = creds.get("service", "uva")
 
         # Capture state before action
         before_org = self.strategy.get_current_org()
 
-        result = self.strategy.connect(creds, vpn_name, no_split)
+        result = self.strategy.connect(creds, vpn_name, no_split, progress_callback=progress_callback)
 
         if result:
             # Capture state after action
@@ -185,43 +120,6 @@ class Vpn:
     def reset_routes(self, service: Optional[str] = None) -> bool:
         return self.strategy.reset_routes(service)
 
-    def anyconnect_checker(self, choco: bool = False) -> None:
-        """Checks if the VPN client is installed, installs it if needed."""
-        try:
-            subprocess.run(
-                ["openconnect", "-V"],
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            if os_is_windows():
-                if not choco:
-                    console.error(
-                        "OpenConnect not found. Please install, or use --choco parameter."
-                    )
-                    os._exit(1)
-                else:
-                    console.warning("OpenConnect not found. Installing OpenConnect...")
-                    from cloudmesh.ai.vpn.windows import win_install
-
-                    win_install()
-            elif os_is_mac():
-                if not choco:
-                    console.error(
-                        "OpenConnect not found. Please install, or use --choco parameter."
-                    )
-                    os._exit(1)
-                else:
-                    console.warning("OpenConnect not found. Installing OpenConnect...")
-                    from cloudmesh.ai.vpn.windows import win_install
-
-                    win_install()
-                    console.msg(
-                        "If your install was successful, please\nchange the System Preferences to allow Cisco,\n"
-                        "then run your previous command again (up-arrow + enter)."
-                    )
-                    os._exit(1)
 
     def info(self) -> str:
         """Display current IP information in a rich table using multiple fallback providers."""
@@ -291,11 +189,13 @@ class Vpn:
         if os.environ.get("VPN_MOCK") == "1":
             return "mock-user", "mock-password"
 
-        if org not in organizations:
+        # Use a temporary config for the requested org to check auth
+        temp_config = VpnConfig(service=org)
+        if not temp_config.config:
             console.error(f"Unknown service {org}")
             return False
 
-        if organizations[org]["auth"] == "pw":
+        if temp_config.get("auth") == "pw":
             # 1. Determine username: Profile override -> Keyring -> Prompt
             username = self.config.get("user")
             if not username:
@@ -335,7 +235,9 @@ class Vpn:
             console.ok(f"Credentials for {org} have been cleared (Mock).")
             return True
 
-        if org not in organizations:
+        # Use a temporary config for the requested org to verify it exists
+        temp_config = VpnConfig(service=org)
+        if not temp_config.config:
             console.error(f"Unknown service {org}")
             return False
         kr.delete_password(org, "cloudmesh-pw")
@@ -347,146 +249,9 @@ class Vpn:
         return self.strategy.watch()
 
     def validate_keys(self, cert_path: str, key_path: str, ca_path: Optional[str]) -> Dict[str, Any]:
-        """
-        Verify VPN certificates and keys using openssl.
-        
-        Args:
-            cert_path (str): Path to the user certificate (.crt).
-            key_path (str): Path to the private key (.key).
-            ca_path (str, optional): Path to the CA certificate (.cer).
-            
-        Returns:
-            Dict containing the results of each check.
-        """
-        results = {
-            "files_found": False,
-            "expiration": {"status": "Unknown", "detail": ""},
-            "integrity": {"status": "Unknown", "detail": ""},
-            "match": {"status": "Unknown", "detail": ""},
-            "trust": {"status": "Unknown", "detail": ""},
-        }
-
-        # 1. Check if required files exist
-        for f in [cert_path, key_path]:
-            if not f or not os.path.exists(os.path.expanduser(f)):
-                results["files_found"] = False
-                return results
-        
-        # CA is optional
-        if ca_path and not os.path.exists(os.path.expanduser(ca_path)):
-            results["trust"] = {"status": "FAILED", "detail": "CA file not found"}
-        
-        results["files_found"] = True
-
-        cert = os.path.expanduser(cert_path)
-        key = os.path.expanduser(key_path)
-        ca = os.path.expanduser(ca_path) if ca_path else None
-
-        def run_cmd(cmd):
-            try:
-                res = subprocess.run(cmd, capture_output=True, text=True, check=False)
-                return res.returncode, res.stdout.strip(), res.stderr.strip()
-            except Exception as e:
-                return 1, "", str(e)
-
-        # 2. Expiration Check
-        rc, out, err = run_cmd(["openssl", "x509", "-in", cert, "-noout", "-checkend", "0"])
-        if rc == 0:
-            # Get the actual date for the detail
-            _, date, _ = run_cmd(["openssl", "x509", "-in", cert, "-noout", "-enddate"])
-            results["expiration"] = {"status": "OK", "detail": date}
-        else:
-            results["expiration"] = {"status": "FAILED", "detail": "Certificate has expired"}
-
-        # 3. Integrity Check
-        rc, out, err = run_cmd(["openssl", "rsa", "-in", key, "-check"])
-        if rc == 0 and "RSA key ok" in out:
-            results["integrity"] = {"status": "OK", "detail": "Key is valid"}
-        else:
-            results["integrity"] = {"status": "FAILED", "detail": err or "Key is invalid"}
-
-        # 4. Modulus Match Check
-        _, cert_mod, _ = run_cmd(["openssl", "x509", "-noout", "-modulus", "-in", cert])
-        _, key_mod, _ = run_cmd(["openssl", "rsa", "-noout", "-modulus", "-in", key])
-        
-        if cert_mod and key_mod and cert_mod == key_mod:
-            results["match"] = {"status": "OK", "detail": "Key and Cert match"}
-        else:
-            results["match"] = {"status": "FAILED", "detail": "Key and Cert do NOT match"}
-
-        # 5. Trust Chain Check
-        if ca:
-            rc, out, err = run_cmd(["openssl", "verify", "-CAfile", ca, cert])
-            if rc == 0:
-                results["trust"] = {"status": "OK", "detail": "Signed by CA"}
-            else:
-                results["trust"] = {"status": "FAILED", "detail": err or "Not signed by CA"}
-        else:
-            results["trust"] = {"status": "Unknown", "detail": "No CA provided"}
-
-        return results
+        """Verify VPN certificates and keys using the KeyManager."""
+        return KeyManager.validate_keys(cert_path, key_path, ca_path)
 
     def init_keys(self, p12_path: str, output_dir: str) -> bool:
-        """
-        Initialize VPN keys from a .p12 bundle.
-        Extracts user.crt, user.key, and creates user_decrypted.pem.
-        """
-        p12 = os.path.expanduser(p12_path)
-        out_dir = os.path.expanduser(output_dir)
-
-        if not os.path.exists(p12):
-            console.error(f"P12 file not found: {p12}")
-            return False
-
-        try:
-            os.makedirs(out_dir, exist_ok=True)
-        except Exception as e:
-            console.error(f"Failed to create output directory {out_dir}: {e}")
-            return False
-
-        cert_path = os.path.join(out_dir, "user.crt")
-        key_path = os.path.join(out_dir, "user.key")
-        pem_path = os.path.join(out_dir, "user_decrypted.pem")
-
-        console.msg(f"Extracting keys from {p12} to {out_dir}...")
-
-        # 1. Extract Certificate
-        # -clcerts: only client certificates, -nokeys: no private key
-        res_cert = subprocess.run(
-            ["openssl", "pkcs12", "-in", p12, "-clcerts", "-nokeys", "-out", cert_path],
-            capture_output=True, text=True
-        )
-        if res_cert.returncode != 0:
-            console.error(f"Failed to extract certificate: {res_cert.stderr}")
-            return False
-
-        # 2. Extract Decrypted Private Key
-        # -nocerts: no certificates, -nodes: don't encrypt the private key
-        res_key = subprocess.run(
-            ["openssl", "pkcs12", "-in", p12, "-nocerts", "-nodes", "-out", key_path],
-            capture_output=True, text=True
-        )
-        if res_key.returncode != 0:
-            console.error(f"Failed to extract private key: {res_key.stderr}")
-            return False
-
-        # 3. Create Decrypted PEM (Combined)
-        try:
-            with open(key_path, 'r') as f_key, open(cert_path, 'r') as f_cert:
-                combined = f_key.read() + "\n" + f_cert.read()
-            with open(pem_path, 'w') as f_pem:
-                f_pem.write(combined)
-        except Exception as e:
-            console.error(f"Failed to create combined PEM file: {e}")
-            return False
-
-        # Set secure permissions
-        for f in [key_path, pem_path]:
-            os.chmod(f, 0o600)
-
-        console.ok(f"Successfully initialized keys in {out_dir}:")
-        console.msg(f"  - {cert_path}")
-        console.msg(f"  - {key_path}")
-        console.msg(f"  - {pem_path}")
-        
-        return True
+        """Initialize VPN keys from a .p12 bundle using the KeyManager."""
+        return KeyManager.init_keys(p12_path, output_dir)

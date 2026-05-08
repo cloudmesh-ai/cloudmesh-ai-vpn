@@ -3,6 +3,7 @@ import subprocess
 import time
 import sys
 import psutil
+from cloudmesh.ai.vpn.vpn import VpnDependencyError
 import re
 from typing import Any, Dict, List, Union, Optional
 
@@ -39,8 +40,9 @@ class LinuxVpnStrategy(VpnOSStrategy):
             if proc.info["name"] == "openconnect": return True
         return False
 
-    def connect(self, creds: Dict[str, Any], vpn_name: str, no_split: bool) -> Union[bool, str, None]:
-        console.info(f"Starting connection process for {vpn_name}...")
+    def connect(self, creds: Dict[str, Any], vpn_name: str, no_split: bool, progress_callback: Optional[callable] = None) -> Union[bool, str, None]:
+        if progress_callback:
+            progress_callback(f"Starting connection process for {vpn_name}...")
         oc_exe = self.openconnect
         if not oc_exe:
             console.error("OpenConnect binary not found. Please install it via your package manager.")
@@ -48,15 +50,17 @@ class LinuxVpnStrategy(VpnOSStrategy):
         
         host = organizations[vpn_name]["host"]
         
+        if progress_callback:
+            progress_callback("Warming up sudo password cache...")
         # Warm up sudo to cache the system password
-        console.info("Warming up sudo password cache...")
         from cloudmesh.ai.common.sudo import Sudo
         sudo_res = Sudo.password()
-        console.info(f"Sudo warm-up result: {sudo_res}")
         if sudo_res != 0:
             console.error("Sudo password warm-up failed.")
             return False
 
+        if progress_callback:
+            progress_callback("Preparing routing and connection parameters...")
         # Handle Routing Script - vpn-slice is assumed to be installed
         script_arg = ""
         if not no_split:
@@ -131,11 +135,11 @@ class LinuxVpnStrategy(VpnOSStrategy):
         
         # Log the exact command for debugging
         cmd_str = ' '.join(cmd_list)
-        console.info(f"Executing command: {cmd_str}")
         logger.debug(f"[VPN] Executing command: {cmd_str}")
         
+        if progress_callback:
+            progress_callback("Launching OpenConnect process...")
         try:
-            console.info("Launching OpenConnect process...")
             # Use DEVNULL for stdout/stderr because -b (background) mode 
             # will hang if the pipe buffers fill up and we aren't reading them.
             proc = subprocess.Popen(
@@ -262,6 +266,17 @@ class LinuxVpnStrategy(VpnOSStrategy):
             pass
  
         return evidence
+
+    def check_dependencies(self, choco: bool = False) -> None:
+        """Check if required binaries are installed."""
+        try:
+            subprocess.run(["openconnect", "-V"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["vpn-slice", "-h"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            raise VpnDependencyError(
+                "Required binaries (openconnect or vpn-slice) not found. "
+                "Please install them using your package manager (e.g., sudo apt install openconnect)."
+            )
 
     def disconnect(self) -> None:
         console.info("Disconnecting OpenConnect...")

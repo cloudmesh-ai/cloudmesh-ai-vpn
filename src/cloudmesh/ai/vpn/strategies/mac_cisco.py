@@ -36,7 +36,9 @@ class MacCiscoStrategy(VpnOSStrategy):
             
         return False
 
-    def connect(self, creds: Dict[str, Any], vpn_name: str, no_split: bool) -> Union[bool, str, None]:
+    def connect(self, creds: Dict[str, Any], vpn_name: str, no_split: bool, progress_callback: Optional[callable] = None) -> Union[bool, str, None]:
+        if progress_callback:
+            progress_callback("Initializing Cisco AnyConnect connection...")
         console.warning("The Cisco AnyConnect strategy is deprecated. Please use OpenConnect with vpn-slice for better split-tunneling support.")
         if not organizations[vpn_name]["user"]:
             mycommand = rf'{self.anyconnect} connect "{organizations[vpn_name]["host"]}"'
@@ -49,6 +51,8 @@ class MacCiscoStrategy(VpnOSStrategy):
             if organizations[vpn_name]["group"]:
                 inner_command = rf"\n" + inner_command
             
+            if progress_callback:
+                progress_callback("Launching Cisco AnyConnect process...")
             # Use subprocess.Popen to avoid passing credentials in the command string
             command = [self.anyconnect, "-s", "connect", organizations[vpn_name]["host"]]
             process = subprocess.Popen(command, stdin=subprocess.PIPE, text=True)
@@ -57,6 +61,8 @@ class MacCiscoStrategy(VpnOSStrategy):
             process.wait()
             return True
 
+        if progress_callback:
+            progress_callback("Establishing connection via pexpect...")
         # For non-user auth (cert), we still need to handle the command
         r = pexpect.spawn(mycommand, logfile=sys.stdout.buffer)
         r.timeout = 25

@@ -54,8 +54,10 @@ class MacOpenConnectKeychainStrategy(VpnOSStrategy):
         return False
 
     def connect(
-        self, creds: Dict[str, Any], vpn_name: str, no_split: bool
+        self, creds: Dict[str, Any], vpn_name: str, no_split: bool, progress_callback: Optional[callable] = None
     ) -> Union[bool, str, None]:
+        if progress_callback:
+            progress_callback("Checking dependencies...")
         oc_exe = self.openconnect
         if not oc_exe:
             console.error(
@@ -71,6 +73,8 @@ class MacOpenConnectKeychainStrategy(VpnOSStrategy):
             return False
 
         host = organizations[vpn_name]["host"]
+        if progress_callback:
+            progress_callback("Warming up sudo...")
         # Warm up sudo to cache the system password
         from cloudmesh.ai.common.sudo import Sudo
         if not Sudo.password():
@@ -146,6 +150,8 @@ class MacOpenConnectKeychainStrategy(VpnOSStrategy):
             )
             return False
 
+        if progress_callback:
+            progress_callback("Launching OpenConnect (Keychain)...")
         # Use standard sudo since password is now cached via sudo -v
         # We remove the invalid --passphrase-from-fsid flag.
         command = f"sudo {oc_exe} --protocol=anyconnect -u {user} -c {path_expand(cert_path)} -k {path_expand(key_path)} {script_arg} {host}"

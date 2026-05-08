@@ -44,7 +44,9 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
             if proc.info["name"] == "openconnect": return True
         return False
 
-    def connect(self, creds: Dict[str, Any], vpn_name: str, no_split: bool) -> Union[bool, str, None]:
+    def connect(self, creds: Dict[str, Any], vpn_name: str, no_split: bool, progress_callback: Optional[callable] = None) -> Union[bool, str, None]:
+        if progress_callback:
+            progress_callback("Checking dependencies...")
         oc_exe = self.openconnect
         if not oc_exe:
             console.error("OpenConnect binary not found. Please install it via Homebrew: brew install openconnect")
@@ -57,6 +59,8 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
 
         host = organizations[vpn_name]["host"]
         
+        if progress_callback:
+            progress_callback("Warming up sudo...")
         # Warm up sudo to cache the system password
         from cloudmesh.ai.common.sudo import Sudo
         if not Sudo.password():
@@ -104,6 +108,8 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
         if pw:
             final_command = f"{command} --passwd-on-stdin"
         
+        if progress_callback:
+            progress_callback("Launching OpenConnect (Decrypted)...")
         try:
             # Construct the command as a list to avoid shell=True and TTY issues with sudo.
             cmd_list = ["sudo", oc_exe, "--protocol=anyconnect", "-u", user, "-c", path_expand(cert_path)]

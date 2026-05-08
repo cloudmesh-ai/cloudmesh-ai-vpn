@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Union, Optional
 
 from cloudmesh.ai.common.io import console
 from cloudmesh.ai.common.sys import os_is_windows
+from cloudmesh.ai.vpn.vpn import VpnDependencyError
 from cloudmesh.ai.vpn.strategies.base import VpnOSStrategy
 from cloudmesh.ai.vpn.organizations import organizations
 from cloudmesh.ai.vpn.windows import win_install, ensure_choco_bin_on_process_path, get_openconnect_exe
@@ -77,12 +78,16 @@ class WindowsVpnStrategy(VpnOSStrategy):
                 return True
         return False
 
-    def connect(self, creds: Dict[str, Any], vpn_name: str, no_split: bool) -> Union[bool, str, None]:
+    def connect(self, creds: Dict[str, Any], vpn_name: str, no_split: bool, progress_callback: Optional[callable] = None) -> Union[bool, str, None]:
+        if progress_callback:
+            progress_callback("Checking administrator privileges...")
         import pyuac
         if not pyuac.isUserAdmin():
             console.error("Please run your terminal as administrator")
             sys.exit(1)
 
+        if progress_callback:
+            progress_callback("Verifying dependencies...")
         ensure_choco_bin_on_process_path()
         
         oc_exe = self.openconnect or get_openconnect_exe() or win_install()
@@ -143,9 +148,13 @@ class WindowsVpnStrategy(VpnOSStrategy):
         if not no_split:
             cmd_list.append(f"--script={script_location}")
 
+        if progress_callback:
+            progress_callback("Stopping conflicting VPN services...")
         # Stop conflicting services before starting
         self._stop_vpn_services()
         
+        if progress_callback:
+            progress_callback("Launching OpenConnect...")
         try:
             proc = subprocess.Popen(
                 cmd_list, 
@@ -195,6 +204,25 @@ class WindowsVpnStrategy(VpnOSStrategy):
             evidence.append("[Process] 'openconnect.exe' is NOT running")
 
         return evidence
+
+    def check_dependencies(self, choco: bool = False) -> None:
+        """Check if required binaries are installed, and attempt installation if requested."""
+        try:
+            subprocess.run(
+                ["openconnect", "-V"],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            if not choco:
+                raise VpnDependencyError(
+                    "OpenConnect not found. Please install, or use --choco parameter."
+                )
+            else:
+                from cloudmesh.ai.vpn.windows import win_install
+                console.warning("OpenConnect not found. Installing OpenConnect...")
+                win_install()
 
     def disconnect(self) -> None:
         console.info("Disconnecting OpenConnect...")

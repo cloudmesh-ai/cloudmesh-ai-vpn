@@ -39,7 +39,7 @@ class VpnOSStrategy(ABC):
         pass
 
     @abstractmethod
-    def connect(self, creds: Dict[str, Any], vpn_name: str, no_split: bool) -> Union[bool, str, None]:
+    def connect(self, creds: Dict[str, Any], vpn_name: str, no_split: bool, progress_callback: Optional[callable] = None) -> Union[bool, str, None]:
         pass
 
     @abstractmethod
@@ -54,6 +54,12 @@ class VpnOSStrategy(ABC):
     def watch(self) -> List[str]:
         """Check for evidence that the VPN is active and using split-routing.
         Returns a list of evidence strings.
+        """
+        pass
+
+    def check_dependencies(self, choco: bool = False) -> None:
+        """Check if required binaries are installed, and attempt installation if requested.
+        Default implementation does nothing.
         """
         pass
 

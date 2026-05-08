@@ -80,6 +80,7 @@ from rich.padding import Padding
 from rich.box import ROUNDED
 from rich.console import Group, Console
 from rich.text import Text
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from cloudmesh.ai.vpn.vpn import Vpn
 from cloudmesh.ai.vpn import profiles
 
@@ -98,6 +99,8 @@ def vpn_group():
 # Internal helpers removed in favor of Vpn class
 
 
+from cloudmesh.ai.vpn.vpn import Vpn, VpnDependencyError
+
 def _connect_logic(service, timeout, debug, choco, nosplit, provider, profile):
     if debug:
         logger.setLevel(logging.DEBUG)
@@ -108,20 +111,34 @@ def _connect_logic(service, timeout, debug, choco, nosplit, provider, profile):
     logger.debug(f"      Timeout: {timeout}")
     logger.debug(f"      Debug: {debug}, Choco: {choco}, NoSplit: {nosplit}")
 
-    if choco:
-        vpn_checker = Vpn(debug=debug)
-        vpn_checker.anyconnect_checker(choco=True)
+    try:
+        vpn = Vpn(
+            service=service,
+            timeout=timeout,
+            debug=debug,
+            provider=provider,
+            profile_name=profile,
+        )
 
-    vpn = Vpn(
-        service=service,
-        timeout=timeout,
-        debug=debug,
-        provider=provider,
-        profile_name=profile,
-    )
+        if choco:
+            vpn.strategy.check_dependencies(choco=True)
 
-    # The Vpn.connect method handles the actual connection logic
-    vpn.connect({"nosplit": nosplit})
+        # Connect to VPN with granular progress
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            transient=True,
+        ) as progress:
+            task = progress.add_task(description="Initializing...", total=None)
+            
+            def progress_callback(msg: str):
+                progress.update(task, description=msg)
+
+            vpn.connect({"nosplit": nosplit}, progress_callback=progress_callback)
+    except VpnDependencyError as e:
+        console.error(str(e))
+        return
+
     logger.debug("[VPN] Connection process completed.")
 
 

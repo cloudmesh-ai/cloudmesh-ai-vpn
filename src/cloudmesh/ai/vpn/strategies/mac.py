@@ -3,6 +3,7 @@ import subprocess
 import time
 import sys
 import psutil
+from cloudmesh.ai.vpn.vpn import VpnDependencyError
 from typing import Any, Dict, List, Union, Optional
 
 from cloudmesh.ai.common.io import console
@@ -39,7 +40,9 @@ class MacVpnStrategy(VpnOSStrategy):
             if proc.info["name"] == "openconnect": return True
         return False
 
-    def connect(self, creds: Dict[str, Any], vpn_name: str, no_split: bool) -> Union[bool, str, None]:
+    def connect(self, creds: Dict[str, Any], vpn_name: str, no_split: bool, progress_callback: Optional[callable] = None) -> Union[bool, str, None]:
+        if progress_callback:
+            progress_callback("Checking dependencies...")
         oc_exe = self.openconnect
         if not oc_exe:
             console.error("OpenConnect binary not found. Please install it via Homebrew: brew install openconnect")
@@ -52,11 +55,15 @@ class MacVpnStrategy(VpnOSStrategy):
 
         host = organizations[vpn_name]["host"]
         
+        if progress_callback:
+            progress_callback("Warming up sudo...")
         # Warm up sudo to cache the system password
         from cloudmesh.ai.common.sudo import Sudo
         if not Sudo.password():
             return False
 
+        if progress_callback:
+            progress_callback("Preparing connection parameters...")
         # Handle Routing Script
         script_arg = ""
         if not no_split:
@@ -108,6 +115,8 @@ class MacVpnStrategy(VpnOSStrategy):
         
         cmd_list.append(host)
         
+        if progress_callback:
+            progress_callback("Launching OpenConnect...")
         try:
             proc = subprocess.Popen(
                 cmd_list,
@@ -172,6 +181,34 @@ class MacVpnStrategy(VpnOSStrategy):
             evidence.append("[Process] 'openconnect' is NOT running")
 
         return evidence
+
+    def check_dependencies(self, choco: bool = False) -> None:
+        """Check if required binaries are installed, and attempt installation if requested."""
+        try:
+            subprocess.run(
+                ["openconnect", "-V"],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            if not choco:
+                raise VpnDependencyError(
+                    "OpenConnect not found. Please install, or use --choco parameter."
+                )
+            else:
+                console.warning("OpenConnect not found. Installing OpenConnect via Homebrew...")
+                try:
+                    subprocess.run(["brew", "install", "openconnect"], check=True)
+                    console.ok("OpenConnect installed successfully via Homebrew.")
+                    console.msg(
+                        "If your install was successful, please\nchange the System Preferences to allow Cisco,\n"
+                        "then run your previous command again (up-arrow + enter)."
+                    )
+                except (subprocess.CalledProcessError, FileNotFoundError):
+                    raise VpnDependencyError(
+                        "Failed to install OpenConnect via Homebrew. Please ensure Homebrew is installed."
+                    )
 
     def disconnect(self) -> None:
         console.info("Disconnecting OpenConnect...")
