@@ -151,6 +151,7 @@ Cleanup	PowerShell Remove-DnsClientNrptRule	sudo route delete
 # INSTALL
 ####################
 
+
 o install and run this VPN tool on all three operating systems, you need both the Python environment and the system-level binaries that the program calls.
 
 1. Common Requirements (All OS)
@@ -195,5 +196,16 @@ Once the system dependencies are installed, you can connect using:
 
 cms vpn connect
 (If you are on Windows and missing binaries, try cms vpn connect --choco)
+
+###########################
+# AI CLI COMMANDS
+###########################
+
+The AI VPN extension includes helper commands to simplify VPN management and discovery.
+
+cms vpn search [ORG]
+  Searches the internet for the VPN IP ranges of a given organization (e.g., 'ufl' or 'virginia.edu').
+  This opens the default web browser with a targeted search query to help administrators find 
+  the correct netblocks for split-tunneling configuration.
 
 

@@ -1,4 +1,4 @@
-
+e
 """
 Cloudmesh AI VPN Extension
 ==========================
@@ -69,6 +69,7 @@ import click
 import logging
 import sys
 import os
+import webbrowser
 from cloudmesh.ai.common.logging_utils import get_contextual_logger
 from cloudmesh.ai.common.io import console
 from rich.live import Live
@@ -357,6 +358,24 @@ def keychain_cmd(action, service, debug):
     
     logger.debug(f"[VPN] Keychain {action} process completed for {service}.")
 
+
+@vpn_group.command(name="search")
+@click.argument("org")
+@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
+def search_cmd(org, debug):
+    """
+    Search the internet for VPN IP ranges of a given organization.
+    """
+    if debug:
+        logger.setLevel(logging.DEBUG)
+    
+    query = f"{org} vpn ip ranges"
+    url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
+    
+    logger.info(f"[VPN Search] Searching for: {query}")
+    console.info(f"Opening browser to search for {org} VPN IP ranges...")
+    
+    webbrowser.open(url)
 
 @vpn_group.command(name="profile")
 @click.argument("action", type=click.Choice(["add", "remove", "list"]))
