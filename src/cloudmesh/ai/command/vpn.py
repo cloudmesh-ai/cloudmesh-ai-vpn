@@ -304,13 +304,7 @@ def watch_cmd(interval, count, debug):
                     table.add_column("Status")
                     table.add_row("Error", f"[red]Failed to retrieve status: {e}[/red]")
 
-                display_content = Panel(
-                    Group(banner_panel, table),
-                    box=ROUNDED,
-                    expand=True,
-                    padding=(0, 1, 0, 1),
-                    border_style="bold blue"
-                )
+                display_content = Group(banner_panel, table)
                 
                 live.update(display_content)
                 live.refresh()
