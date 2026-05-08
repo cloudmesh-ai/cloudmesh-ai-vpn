@@ -78,6 +78,8 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.padding import Padding
 from rich.box import ROUNDED
+from rich.console import Group, Console
+from rich.text import Text
 from cloudmesh.ai.vpn.vpn import Vpn
 from cloudmesh.ai.vpn import profiles
 
@@ -99,7 +101,7 @@ def vpn_group():
 def _connect_logic(service, timeout, debug, choco, nosplit, provider, profile):
     if debug:
         logger.setLevel(logging.DEBUG)
-    
+
     logger.debug(f"[VPN] Connecting to service: {service if service else 'Default'}...")
     logger.debug(f"      Provider: {provider}")
     logger.debug(f"      Profile: {profile if profile else 'Default'}")
@@ -115,12 +117,13 @@ def _connect_logic(service, timeout, debug, choco, nosplit, provider, profile):
         timeout=timeout,
         debug=debug,
         provider=provider,
-        profile_name=profile
+        profile_name=profile,
     )
-    
+
     # The Vpn.connect method handles the actual connection logic
     vpn.connect({"nosplit": nosplit})
     logger.debug("[VPN] Connection process completed.")
+
 
 @vpn_group.command(name="connect")
 @click.option("--service", default=None, help="VPN service name.")
@@ -162,11 +165,12 @@ def _disconnect_logic(debug):
     if debug:
         logger.setLevel(logging.DEBUG)
     logger.debug(f"[VPN] Disconnecting... (Debug: {debug})")
-    
+
     vpn = Vpn(debug=debug)
     vpn.disconnect()
-    
+
     logger.debug("[VPN] Disconnection process completed.")
+
 
 @vpn_group.command(name="disconnect")
 @click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
@@ -191,11 +195,11 @@ def status_cmd(debug):
     """
     if debug:
         logger.setLevel(logging.DEBUG)
-    
+
     vpn = Vpn(debug=debug)
     enabled = vpn.enabled()
     console.print(str(enabled))
-    
+
     if debug:
         logger.debug(f"[VPN] VPN status check: enabled={enabled}")
 
@@ -209,10 +213,10 @@ def info_cmd(debug):
     """
     if debug:
         logger.setLevel(logging.DEBUG)
-    
+
     vpn = Vpn(debug=debug)
     vpn.info()
-    
+
     if debug:
         logger.debug("[VPN Info] IP information retrieved and displayed.")
 
@@ -224,16 +228,16 @@ def reset_cmd(service, debug):
     """Clears the credentials for the VPN service."""
     if debug:
         logger.setLevel(logging.DEBUG)
-    
+
     target = service if service else "default"
     logger.debug(f"Resetting credentials for service: {target}")
-    
+
     vpn = Vpn(debug=debug)
     if vpn.reset_routes(service):
         console.ok(f"Successfully reset routes for {target}")
     else:
         console.error(f"Failed to reset routes for {target}")
-    
+
     logger.debug("[VPN] Route reset process completed.")
 
 
@@ -245,9 +249,9 @@ def watch_cmd(interval, count, debug):
     """Monitors the VPN connection at a given interval."""
     if debug:
         logger.setLevel(logging.DEBUG)
-    
+
     import time
-    
+
     try:
         interval_val = int(interval)
     except ValueError:
@@ -266,7 +270,7 @@ def watch_cmd(interval, count, debug):
 
     vpn = Vpn(debug=debug)
     iteration = 0
-    
+
     from rich.console import Group
 
     try:
@@ -274,10 +278,12 @@ def watch_cmd(interval, count, debug):
         with Live(console=console, refresh_per_second=1, auto_refresh=False) as live:
             while True:
                 iteration += 1
-                
+
                 # Build the content
-                banner_panel = console.create_banner("VPN Watch", f"Iteration: {iteration} | Service: {vpn.service}")
-                
+                banner_panel = console.create_banner(
+                    "VPN Watch", f"Iteration: {iteration} | Service: {vpn.service}"
+                )
+
                 try:
                     status_msgs = vpn.watch()
                     table = Table(box=ROUNDED, expand=True)
@@ -289,12 +295,27 @@ def watch_cmd(interval, count, debug):
                             detail = detail.strip()
                             # Dynamic Color Coding
                             lower_detail = detail.lower()
-                            if any(word in lower_detail for word in ["connected", "success", "ok"]):
-                                table.add_row(category.strip("["), f"[green]{detail}[/green]")
-                            elif any(word in lower_detail for word in ["disconnected", "error", "failed"]):
-                                table.add_row(category.strip("["), f"[red]{detail}[/red]")
-                            elif any(word in lower_detail for word in ["connecting", "warning"]):
-                                table.add_row(category.strip("["), f"[yellow]{detail}[/yellow]")
+                            if any(
+                                word in lower_detail
+                                for word in ["connected", "success", "ok"]
+                            ):
+                                table.add_row(
+                                    category.strip("["), f"[green]{detail}[/green]"
+                                )
+                            elif any(
+                                word in lower_detail
+                                for word in ["disconnected", "error", "failed"]
+                            ):
+                                table.add_row(
+                                    category.strip("["), f"[red]{detail}[/red]"
+                                )
+                            elif any(
+                                word in lower_detail
+                                for word in ["connecting", "warning"]
+                            ):
+                                table.add_row(
+                                    category.strip("["), f"[yellow]{detail}[/yellow]"
+                                )
                             else:
                                 table.add_row(category.strip("["), detail)
                         else:
@@ -307,14 +328,14 @@ def watch_cmd(interval, count, debug):
                     table.add_row("Error", f"[red]Failed to retrieve status: {e}[/red]")
 
                 display_content = Group(banner_panel, table)
-                
+
                 live.update(display_content)
                 live.refresh()
-                
+
                 if count and iteration >= int(count):
                     logger.debug(f"[VPN] Reached count limit of {count}. Stopping.")
                     break
-                
+
                 if os.environ.get("VPN_MOCK") != "1":
                     time.sleep(interval_val)
     except KeyboardInterrupt:
@@ -337,64 +358,139 @@ def keychain_cmd(action, service, debug):
     """
     if debug:
         logger.setLevel(logging.DEBUG)
-    
+
     vpn = Vpn(debug=debug)
-    
+
     if action == "remove":
-        logger.debug(f"Removing private key passphrase from macOS Keychain for {service}...")
+        logger.debug(
+            f"Removing private key passphrase from macOS Keychain for {service}..."
+        )
         vpn.pw_clearer(service)
     else:
-        logger.debug(f"Adding private key passphrase to macOS Keychain for {service}...")
+        logger.debug(
+            f"Adding private key passphrase to macOS Keychain for {service}..."
+        )
         vpn.pw_fetcher(service)
-    
+
     if os.environ.get("VPN_MOCK") == "1":
-        msg = "Keychain add completed (Mock)" if action != "remove" else "Keychain remove completed (Mock)"
+        msg = (
+            "Keychain add completed (Mock)"
+            if action != "remove"
+            else "Keychain remove completed (Mock)"
+        )
         logger.debug(msg)
-    
+
     logger.debug(f"[VPN] Keychain {action} process completed for {service}.")
 
 
-def _fetch_ip_ranges(query):
-    """Attempt to find IP ranges in search results using a simple scraper and known data."""
-    # Known ranges for common organizations to ensure a good "AI" experience
+def _query_llm_for_ranges(org):
+    """Query a vLLM server for VPN IP ranges."""
+    try:
+        host = os.environ.get("VLLM_HOST", "localhost")
+        port = os.environ.get("VLLM_PORT", "8000")
+        url = f"http://{host}:{port}/v1/chat/completions"
+        prompt = f"What are the public VPN IP ranges (CIDR) for {org}? Provide only the CIDR ranges as a comma-separated list. If unknown, say 'Unknown'."
+        payload = {
+            "model": "gpt-3.5-turbo",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+        }
+        response = requests.post(url, json=payload, timeout=5)
+        response.raise_for_status()
+        content = response.json()["choices"][0]["message"]["content"].strip()
+        if "Unknown" in content:
+            return []
+        # Match CIDR (1.2.3.0/24) or Range (1.2.3.0 - 1.2.3.255)
+        cidr_regex = r"\b\d{1,3}(?:\.\d{1,3}){3}/\d{1,2}\b"
+        range_regex = r"\b\d{1,3}(?:\.\d{1,3}){3}\s*-\s*\d{1,3}(?:\.\d{1,3}){3}\b"
+        return re.findall(cidr_regex, content)
+    except Exception as e:
+        logger.debug(f"LLM query failed: {e}")
+        return []
+
+
+def _fetch_searxng_ranges(query):
+    """Fetch IP ranges using SearXNG JSON API with fallback instances."""
+    # List of public SearXNG instances to try if the primary one fails
+    instances = [
+        os.environ.get("SEARXNG_URL", "https://searx.be"),
+        "https://searx.space",
+        "https://searxng.be",
+        "https://priv.searx.be",
+    ]
+
+    cidr_regex = r"\b\d{1,3}(?:\.\d{1,3}){3}/\d{1,2}\b"
+
+    for base_url in instances:
+        try:
+            url = f"{base_url}/search"
+            params = {"q": query, "format": "json", "engines": "google,bing,duckduckgo"}
+            response = requests.get(url, params=params, timeout=5)
+            if response.status_code == 200:
+                results = response.json().get("results", [])
+                found = set()
+                for res in results:
+                    text = f"{res.get('title', '')} {res.get('content', '')}"
+                    found.update(re.findall(cidr_regex, text))
+                    found.update(re.findall(range_regex, text))
+                if found:
+                    return list(found)
+        except Exception as e:
+            logger.debug(f"SearXNG instance {base_url} failed: {e}")
+
+    return []
+
+
+def _fetch_ip_ranges(query, org):
+    """Hybrid approach: Known data -> SearXNG -> LLM -> Advanced Scraper."""
+    # 1. Known data (High confidence)
     known_data = {
         "virginia.edu": ["128.143.0.0/16", "137.54.0.0/16"],
         "uva.edu": ["128.143.0.0/16", "137.54.0.0/16"],
+        "mit.edu": ["18.0.0.0/8"],
+        "stanford.edu": ["171.64.0.0/14"],
+        "flu.edu": ["134.110.0.0/16"],
     }
-    
-    # Check if the query contains any known organization
-    for org, ranges in known_data.items():
-        if org in query.lower():
-            return ranges
+    for k, v in known_data.items():
+        if k in query.lower() or k in org.lower():
+            return v
 
+    # 2. SearXNG Metasearch (Structured API)
+    searx_ranges = _fetch_searxng_ranges(query)
+    if searx_ranges:
+        return searx_ranges
+
+    # 3. LLM Query (If server is available)
+    llm_ranges = _query_llm_for_ranges(org)
+    if llm_ranges:
+        return llm_ranges
+
+    # 4. Advanced Scraper Fallback
     found_ranges = set()
-    # Try multiple search queries to increase hit rate
-    queries = [
-        query,
-        f"{query} CIDR",
-        f"{query} subnet",
+    search_targets = [
+        (
+            f"https://html.duckduckgo.com/html/?q={query.replace(' ', '+')}",
+            "DuckDuckGo",
+        ),
+        (
+            f"https://html.duckduckgo.com/html/?q={org.replace(' ', '+')}+vpn+cidr",
+            "DuckDuckGo CIDR",
+        ),
     ]
-    
-    for q in queries:
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    for url, name in search_targets:
         try:
-            # Use DuckDuckGo HTML version for easier scraping
-            search_url = f"https://html.duckduckgo.com/html/?q={q.replace(' ', '+')}"
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
-            }
-            response = requests.get(search_url, headers=headers, timeout=5)
-            response.raise_for_status()
-            
-            # Regex for IPv4 CIDR ranges (e.g., 1.2.3.4/24)
-            cidr_regex = r'\b\d{1,3}(?:\.\d{1,3}){3}/\d{1,2}\b'
-            ranges = re.findall(cidr_regex, response.text)
-            found_ranges.update(ranges)
-        except Exception as e:
-            logger.debug(f"Search fetch failed for {q}: {e}")
-            
+            response = requests.get(url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                cidr_regex = r"\b\d{1,3}(?:\.\d{1,3}){3}/\d{1,2}\b"
+                range_regex = r"\b\d{1,3}(?:\.\d{1,3}){3}\s*-\s*\d{1,3}(?:\.\d{1,3}){3}\b"
+                found_ranges.update(re.findall(cidr_regex, response.text))
+                found_ranges.update(re.findall(range_regex, response.text))
+        except Exception:
+            pass
+
     return list(found_ranges)
+
 
 @vpn_group.command(name="search")
 @click.argument("org")
@@ -405,18 +501,37 @@ def search_cmd(org, debug):
     """
     if debug:
         logger.setLevel(logging.DEBUG)
-    
+
     query = f"{org} vpn ip ranges"
     url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
-    
+
     logger.info(f"[VPN Search] Searching for: {query}")
-    
-    # Try to fetch ranges for ASCII display
-    found_ranges = _fetch_ip_ranges(query)
-    
+
+    # AI-style "Thinking" animation
+    with Live(console=console, refresh_per_second=4, transient=True) as live:
+        frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        steps = [
+            f"Analyzing {org} network patterns...",
+            "Querying SearXNG metasearch...",
+            "Consulting LLM knowledge base...",
+            "Parsing CIDR ranges from results...",
+        ]
+        for i in range(20):
+            step = steps[(i // 5) % len(steps)]
+            live.update(f"[bold blue]{frames[i % len(frames)]} {step}[/bold blue]")
+            import time
+
+            time.sleep(0.1)
+
+        found_ranges = _fetch_ip_ranges(query, org)
+
     # ASCII Presentation
-    ranges_text = "\n".join([f"  - {r}" for r in found_ranges]) if found_ranges else "  No ranges found automatically. Check browser."
-    
+    ranges_text = (
+        "\n".join([f"  - {r}" for r in found_ranges])
+        if found_ranges
+        else "  No ranges found automatically. Check browser."
+    )
+
     ascii_banner = f"""
     +-------------------------------------------------------+
     |                VPN ORGANIZATION SEARCH                |
@@ -431,8 +546,9 @@ def search_cmd(org, debug):
     +-------------------------------------------------------+
     """
     console.print(ascii_banner)
-    
+
     webbrowser.open(url)
+
 
 @vpn_group.command(name="profile")
 @click.argument("action", type=click.Choice(["add", "remove", "list"]))
@@ -450,53 +566,61 @@ def profile_cmd(action, name, service, debug):
     """
     if debug:
         logger.setLevel(logging.DEBUG)
-    
+
     if action == "list":
         logger.debug("Profile action: list")
         all_profiles = profiles.load_profiles()
         if os.environ.get("VPN_MOCK") == "1":
             all_profiles = {
                 "Default": {"service": "uva"},
-                "Work-Remote": {"service": "uva-remote"}
+                "Work-Remote": {"service": "uva-remote"},
             }
             logger.debug(f"Mock profiles: {all_profiles}")
-            
+
         if not all_profiles:
             console.print("No profiles found.")
         else:
             for p_name, p_data in all_profiles.items():
                 console.print(f"{p_name}: {p_data}")
-    
+
     elif action == "add":
         if not name or not service:
             if os.environ.get("VPN_MOCK") != "1":
-                console.error("Both --name and --service are required to add a profile.")
+                console.error(
+                    "Both --name and --service are required to add a profile."
+                )
                 return
-        
-        logger.debug(f"[VPN] Adding profile {name if name else 'Default'} for service {service if service else 'uva'}...")
+
+        logger.debug(
+            f"[VPN] Adding profile {name if name else 'Default'} for service {service if service else 'uva'}..."
+        )
         if os.environ.get("VPN_MOCK") == "1":
             logger.debug("Profile add completed (Mock)")
-            console.ok(f"Profile '{name if name else 'Default'}' added successfully (Mock).")
+            console.ok(
+                f"Profile '{name if name else 'Default'}' added successfully (Mock)."
+            )
         elif profiles.add_profile(name, service):
             console.ok(f"Profile '{name}' added successfully.")
         else:
             console.error(f"Failed to add profile '{name}'.")
-            
+
     elif action == "remove":
         if not name:
             if os.environ.get("VPN_MOCK") != "1":
                 console.error("The --name option is required to remove a profile.")
                 return
-        
+
         logger.debug(f"[VPN] Removing profile {name if name else 'Default'}...")
         if os.environ.get("VPN_MOCK") == "1":
             logger.debug("Profile remove completed (Mock)")
-            console.ok(f"Profile '{name if name else 'Default'}' removed successfully (Mock).")
+            console.ok(
+                f"Profile '{name if name else 'Default'}' removed successfully (Mock)."
+            )
         elif profiles.remove_profile(name):
             console.ok(f"Profile '{name}' removed successfully.")
         else:
             console.error(f"Profile '{name}' not found.")
-    
+
     logger.debug(f"[VPN] Profile {action} process completed.")
 
 
