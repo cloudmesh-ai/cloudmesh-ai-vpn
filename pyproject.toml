@@ -6,8 +6,18 @@ build-backend = "setuptools.build_meta"
 name = "cloudmesh-ai-vpn"
 
 dynamic = ["version"]
-description = "Extension vpn created by CME"
+description = "Tools to manage VPN connections, profiles, and keys for UVA Anywhere VPN and other compatible providers."
+readme = "README.md"
 license = "Apache-2.0"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+]
 dependencies = [
     "cloudmesh-ai-cmc",
     "click",
