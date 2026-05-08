@@ -7,6 +7,9 @@ cloudmesh:
       user: true
       2fa: false
       group: false
+      ip:
+        - 128.227.0.0/16
+        - 159.178.0.0/16
       domain: cise.ufl.edu
       connection_check:
         - University of Florida
@@ -26,6 +29,9 @@ cloudmesh:
         - rivanna.hpc.virginia.edu 
         - 128.143.0.0/16 
         - 137.54.0.0/16
+        - 199.111.0.0/16
+        - 199.111.160.0/19
+        - 199.111.192.0/18
       domain: virginia.edu
       connection_check:
         - University of Virginia
@@ -37,22 +43,18 @@ cloudmesh:
       user: true
       2fa: true
       group: false
-      ip: 
-        - 131.94.0.0
+      ip:
+        - 131.94.0.0/16
+        - 131.94.68.0/22
+        - 131.94.88.0/22
+        - 131.94.188.0/23
+        - 131.94.2.0/24
+        - 131.94.7.0/24
+        - 131.94.82.0/24
       domain: fiu.edu
       connection_check:
         - Florida International University
         - FIU
-    famu:
-      auth: pw
-      name: vpn.famu.edu
-      host: vpn.famu.edu
-      user: true
-      2fa: false
-      group: false
-      connection_check:
-        - Florida A&M University
-        - FAMU
     nyu:
       auth: pw
       name: vpn.nyu.edu
@@ -60,6 +62,16 @@ cloudmesh:
       user: true
       2fa: true
       group: "NYU VPN: NYU-NET Traffic Only"
+      ip:
+        - 128.122.0.0/16
+        - 216.165.0.0/18
+        - 216.165.64.0/19
+        - 216.165.96.0/20
+        - 192.76.177.0/24
+        - 192.86.139.0/24
+        - 216.165.88.0/24
+        - 216.165.124.0/23
+        - 216.165.126.0/23
       connection_check:
         - New York University
         - NYU
@@ -70,6 +82,11 @@ cloudmesh:
       user: true
       2fa: false
       group: true
+      ip:
+        - 128.200.0.0/16
+        - 160.87.0.0/16
+        - 169.234.0.0/16
+        - 192.5.19.0/24
       connection_check:
         - University of California, Irvine
         - UCI
@@ -80,6 +97,9 @@ cloudmesh:
       user: true
       2fa: false
       group: false
+      ip:
+        - 129.174.0.0/17
+        - 129.174.128.0/17
       connection_check:
         - George Mason University
         - GMU
@@ -101,6 +121,29 @@ cloudmesh:
       2fa: false
       group: true
       pw_concat: true
+      ip:
+        - 129.252.0.0/16
+        - 65.122.168.0/21
+        - 129.252.78.0/24
       connection_check:
         - University of South Carolina
         - USC
+    iu:
+      auth: pw
+      name: Indiana University
+      host: vpn.uits.iu.edu
+      user: true
+      2fa: true
+      group: false
+      ip:
+        - 149.160.0.0/14
+        - 129.79.0.0/16
+        - 134.68.0.0/16
+        - 140.182.0.0/16
+        - 156.56.0.0/16
+        - 149.159.128.0/18
+        - 149.159.192.0/18
+      domain: iu.edu
+      connection_check:
+        - Indiana University
+        - IU

@@ -12,16 +12,23 @@ from cloudmesh.ai.vpn.organizations import organizations
 def path_expand(path):
     return os.path.expanduser(path)
 
-class LinuxVpnStrategy(VpnOSStrategy):
+class MacVpnStrategy(VpnOSStrategy):
     def __init__(self, vpn_context: 'Vpn'):
         super().__init__(vpn_context)
         self._pid = None
 
     def _discover_openconnect(self) -> Optional[str]:
-        return self._discover_binary("openconnect", ["/usr/bin/openconnect", "/usr/local/bin/openconnect"])
+        return self._discover_binary("openconnect", ["/usr/bin/openconnect", "/usr/local/bin/openconnect", "/opt/homebrew/bin/openconnect"])
 
     def _discover_vpn_slice(self) -> Optional[str]:
-        return self._discover_binary("vpn-slice", ["/usr/local/bin/vpn-slice", "/usr/bin/vpn-slice"])
+        path = self._discover_binary("vpn-slice", ["/usr/local/bin/vpn-slice", "/opt/homebrew/bin/vpn-slice"])
+        if path and "shims" in path:
+            try:
+                actual_path = subprocess.check_output(["pyenv", "which", "vpn-slice"], text=True).strip()
+                return actual_path
+            except Exception:
+                return path
+        return path
 
     @property
     def vpn_slice(self) -> Optional[str]:
@@ -35,12 +42,12 @@ class LinuxVpnStrategy(VpnOSStrategy):
     def connect(self, creds: Dict[str, Any], vpn_name: str, no_split: bool) -> Union[bool, str, None]:
         oc_exe = self.openconnect
         if not oc_exe:
-            console.error("OpenConnect binary not found. Please install it via your package manager.")
+            console.error("OpenConnect binary not found. Please install it via Homebrew: brew install openconnect")
             return False
         
         vs_exe = self.vpn_slice
         if not vs_exe and not no_split:
-            console.error("vpn-slice binary not found. Please install it.")
+            console.error("vpn-slice binary not found. Please install it: brew install vpn-slice")
             return False
 
         host = organizations[vpn_name]["host"]
@@ -79,11 +86,6 @@ class LinuxVpnStrategy(VpnOSStrategy):
         
         cmd_list = ["sudo", oc_exe, "--protocol=anyconnect", "-u", user]
         
-        # Docker MTU Fix
-        is_docker = os.path.exists("/.dockerenv") or (os.path.isfile("/proc/self/cgroup") and "docker" in open("/proc/self/cgroup").read())
-        if is_docker:
-            cmd_list.extend(["-m", "1290"])
-
         if auth_method == "cert":
             # Use cert from YAML or default path
             cert_path = org_config.get("cert") or creds.get("cert_path")

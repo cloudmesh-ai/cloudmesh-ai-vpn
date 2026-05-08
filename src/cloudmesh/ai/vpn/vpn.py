@@ -20,13 +20,7 @@ from cloudmesh.ai.vpn.organizations import organizations as org_config
 
 from cloudmesh.ai.vpn.strategies.windows import WindowsVpnStrategy
 from cloudmesh.ai.vpn.strategies.linux import LinuxVpnStrategy
-from cloudmesh.ai.vpn.strategies.mac_openconnect_decrypted import (
-    MacOpenConnectDecryptedStrategy,
-)
-from cloudmesh.ai.vpn.strategies.mac_openconnect_keychain import (
-    MacOpenConnectKeychainStrategy,
-)
-from cloudmesh.ai.vpn.strategies.mac_openconnect_pw import MacOpenConnectPwStrategy
+from cloudmesh.ai.vpn.strategies.mac import MacVpnStrategy
 from cloudmesh.ai.vpn.strategies.mock import MockVpnStrategy
 
 
@@ -107,24 +101,7 @@ class Vpn:
         elif os_is_windows():
             self.strategy = WindowsVpnStrategy(self)
         elif os_is_mac():
-            # Use provider from merged config if available, otherwise from argument
-            final_provider = self.config.get("provider", provider)
-            final_provider = (
-                final_provider.lower() if final_provider else "openconnect-decrypted"
-            )
-
-            if final_provider == "openconnect-decrypted":
-                self.strategy = MacOpenConnectDecryptedStrategy(self)
-            elif final_provider == "openconnect-keychain":
-                self.strategy = MacOpenConnectKeychainStrategy(self)
-            elif final_provider.startswith("openconnect"):
-                self.strategy = MacOpenConnectPwStrategy(self)
-            elif final_provider == "cisco":
-                raise ValueError(
-                    "The 'cisco' provider is deprecated and no longer supported. Please use an 'openconnect' provider."
-                )
-            else:
-                self.strategy = MacOpenConnectDecryptedStrategy(self)
+            self.strategy = MacVpnStrategy(self)
 
             console.msg(f"Selected VPN Strategy: {self.strategy.__class__.__name__}")
         elif os_is_linux():
