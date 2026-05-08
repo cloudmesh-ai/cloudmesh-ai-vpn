@@ -14,7 +14,7 @@ PYENVVERSION := $(shell pyenv version-name)
 
 .PHONY: help install clean build test reinstall \
         check tag release test test-cov setup-test uninstall-all \
-        tmp-setup
+        tmp-setup sync
 
 help:
 	@echo
@@ -30,6 +30,7 @@ help:
 	@echo "  setup-test    - Install test deps"
 	@echo "  tag           - Create a git tag based on current version and push"
 	@echo "  release       - Full Production Cycle: upload + tag"
+	@echo "  sync          - Sync changed .py files to remote server"
 	@echo
 
 # --- DEVELOPMENT & TESTING ---
@@ -71,6 +72,14 @@ tag:
 
 release: upload tag
 	@echo "Production release and tagging complete."
+
+# --- REMOTE SYNC ---
+
+sync:
+	@echo "Syncing changed .py files to white:work/cloudmesh-ai-vpn..."
+	rsync -avzi --exclude="__pycache__/" --exclude="*.egg-info/" --include="*.py" --include="*/" --exclude="*" . white:work/cloudmesh-ai-vpn
+	@echo "Syncing common library..."
+	$(MAKE) -C ../cloudmesh-ai-common sync
 
 # --- CLEANUP & REINSTALL ---
 

@@ -385,6 +385,83 @@ def keychain_cmd(action, service, debug):
 
 
 
+@vpn_group.group(name="key")
+def key_group():
+    """Manage VPN keys and certificates."""
+    pass
+
+@key_group.command(name="init")
+@click.option("--p12", default="~/.ssh/uva/user.p12", help="Path to the user.p12 bundle.")
+@click.option("--out", default="~/.ssh/uva/", help="Output directory for extracted keys.")
+@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
+def init_key_cmd(p12, out, debug):
+    """Initialize VPN keys from a .p12 bundle. Extracts .crt, .key, and creates decrypted .pem."""
+    if debug:
+        logger.setLevel(logging.DEBUG)
+
+    vpn = Vpn(debug=debug)
+    if vpn.init_keys(p12, out):
+        console.ok("VPN keys initialized successfully.")
+    else:
+        console.error("Failed to initialize VPN keys.")
+
+@key_group.command(name="validate")
+@click.option("--cert", default="~/.ssh/uva/user.crt", help="Path to user certificate.")
+@click.option("--key", default="~/.ssh/uva/user.key", help="Path to private key.")
+@click.option("--ca", default=None, help="Path to CA certificate (optional).")
+@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
+def validate_key_cmd(cert, key, ca, debug):
+    """Verify that VPN certificates and keys are valid and match."""
+    if debug:
+        logger.setLevel(logging.DEBUG)
+
+    vpn = Vpn(debug=debug)
+    console.msg(f"Validating keys:\n  Cert: {cert}\n  Key:  {key}\n  CA:   {ca}")
+    
+    results = vpn.validate_keys(cert, key, ca)
+    
+    if not results["files_found"]:
+        console.error("One or more certificate files were not found. Please check the paths.")
+        return
+
+    table = Table(
+        title="VPN Key Validation Results",
+        box=ROUNDED,
+        show_header=True,
+        header_style="bold magenta"
+    )
+    table.add_column("Check", style="cyan")
+    table.add_column("Status", style="cyan")
+    table.add_column("Detail", style="cyan")
+
+    checks = [
+        ("Expiration", "expiration"),
+        ("Integrity", "integrity"),
+        ("Modulus Match", "match"),
+        ("Trust Chain", "trust"),
+    ]
+
+    all_ok = True
+    for label, key_name in checks:
+        res = results[key_name]
+        status = res["status"]
+        detail = res["detail"]
+        
+        if status == "OK":
+            table.add_row(label, "[green]OK[/green]", detail)
+        elif status == "FAILED":
+            table.add_row(label, "[red]FAILED[/red]", detail)
+            all_ok = False
+        else:
+            table.add_row(label, "[yellow]Unknown[/yellow]", detail)
+
+    console.print(table)
+    
+    if all_ok:
+        console.ok("All certificate checks passed!")
+    else:
+        console.error("Some certificate checks failed. Please review the table above.")
+
 @vpn_group.command(name="profile")
 @click.argument("action", type=click.Choice(["add", "remove", "list"]))
 @click.option("--name", default=None, help="Profile name.")

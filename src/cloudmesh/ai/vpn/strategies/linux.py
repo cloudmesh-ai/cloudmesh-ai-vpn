@@ -3,11 +3,15 @@ import subprocess
 import time
 import sys
 import psutil
+import re
 from typing import Any, Dict, List, Union, Optional
 
 from cloudmesh.ai.common.io import console
+from cloudmesh.ai.common.logging_utils import get_contextual_logger
 from cloudmesh.ai.vpn.strategies.base import VpnOSStrategy
 from cloudmesh.ai.vpn.organizations import organizations
+
+logger = get_contextual_logger("vpn.linux")
 
 def path_expand(path):
     return os.path.expanduser(path)
@@ -19,6 +23,9 @@ class LinuxVpnStrategy(VpnOSStrategy):
 
     def _discover_openconnect(self) -> Optional[str]:
         return self._discover_binary("openconnect", ["/usr/bin/openconnect", "/usr/local/bin/openconnect"])
+
+    def _discover_anyconnect(self) -> Optional[str]:
+        return self._discover_binary("vpnui", ["/opt/cisco/anyconnect/bin/vpnui", "/usr/bin/vpnui"])
 
     def _discover_vpn_slice(self) -> Optional[str]:
         return self._discover_binary("vpn-slice", ["/usr/local/bin/vpn-slice", "/usr/bin/vpn-slice"])
@@ -33,26 +40,27 @@ class LinuxVpnStrategy(VpnOSStrategy):
         return False
 
     def connect(self, creds: Dict[str, Any], vpn_name: str, no_split: bool) -> Union[bool, str, None]:
+        console.info(f"Starting connection process for {vpn_name}...")
         oc_exe = self.openconnect
         if not oc_exe:
             console.error("OpenConnect binary not found. Please install it via your package manager.")
             return False
         
-        vs_exe = self.vpn_slice
-        if not vs_exe and not no_split:
-            console.error("vpn-slice binary not found. Please install it.")
-            return False
-
         host = organizations[vpn_name]["host"]
         
         # Warm up sudo to cache the system password
+        console.info("Warming up sudo password cache...")
         from cloudmesh.ai.common.sudo import Sudo
-        if not Sudo.password():
+        sudo_res = Sudo.password()
+        console.info(f"Sudo warm-up result: {sudo_res}")
+        if sudo_res != 0:
+            console.error("Sudo password warm-up failed.")
             return False
 
-        # Handle Routing Script
+        # Handle Routing Script - vpn-slice is assumed to be installed
         script_arg = ""
         if not no_split:
+            vs_exe = self.vpn_slice or "vpn-slice"
             org_config = organizations.get(vpn_name, {})
             ip_range = org_config.get("ip")
             if isinstance(ip_range, list):
@@ -77,7 +85,8 @@ class LinuxVpnStrategy(VpnOSStrategy):
         org_config = organizations.get(vpn_name, {})
         auth_method = org_config.get("auth", "cert")
         
-        cmd_list = ["sudo", oc_exe, "--protocol=anyconnect", "-u", user]
+        # Add -b for background and -v for verbose as per README-tech
+        cmd_list = ["sudo", oc_exe, "-b", "-v", "--protocol=anyconnect", "-u", user]
         
         # Docker MTU Fix
         is_docker = os.path.exists("/.dockerenv") or (os.path.isfile("/proc/self/cgroup") and "docker" in open("/proc/self/cgroup").read())
@@ -85,16 +94,30 @@ class LinuxVpnStrategy(VpnOSStrategy):
             cmd_list.extend(["-m", "1290"])
 
         if auth_method == "cert":
-            # Use cert from YAML or default path
+            # Linux often uses a 3-file cert set: cafile, sslkey, certificate
             cert_path = org_config.get("cert") or creds.get("cert_path")
             if not cert_path:
-                cert_path = "~/.ssh/uva/decrypted_user.pem"
+                cert_path = "~/.ssh/uva/"
             
-            if not os.path.exists(path_expand(cert_path)):
-                console.error(f"Certificate file not found at {cert_path}")
+            # Ensure cert_path is a string (handle cases where it might be a list)
+            if isinstance(cert_path, list):
+                cert_path = cert_path[0] if cert_path else "~/.ssh/uva/"
+            
+            expanded_path = path_expand(str(cert_path))
+            
+            if os.path.isdir(expanded_path):
+                # Use the 3-file set documented in README-tech
+                cmd_list.extend([
+                    "--cafile", os.path.join(expanded_path, "usher.cer"),
+                    "--sslkey", os.path.join(expanded_path, "user.key"),
+                    "--certificate", os.path.join(expanded_path, "user.crt")
+                ])
+            elif os.path.exists(expanded_path):
+                # Fallback to single decrypted PEM
+                cmd_list.extend(["-c", expanded_path])
+            else:
+                console.error(f"Certificate file or directory not found at {cert_path}")
                 return False
-            
-            cmd_list.extend(["-c", path_expand(cert_path)])
         else:
             # Password auth
             pw = creds.get("pw")
@@ -106,39 +129,76 @@ class LinuxVpnStrategy(VpnOSStrategy):
         
         cmd_list.append(host)
         
+        # Log the exact command for debugging
+        cmd_str = ' '.join(cmd_list)
+        console.info(f"Executing command: {cmd_str}")
+        logger.debug(f"[VPN] Executing command: {cmd_str}")
+        
         try:
+            console.info("Launching OpenConnect process...")
+            # Use DEVNULL for stdout/stderr because -b (background) mode 
+            # will hang if the pipe buffers fill up and we aren't reading them.
             proc = subprocess.Popen(
                 cmd_list,
                 stdin=subprocess.PIPE,
-                stdout=None,
-                stderr=None,
-                text=True
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                bufsize=1 # Line buffered
             )
             
-            # Move the process to its own process group for persistence
+            # Move the process to its own process group for persistence (as per README-tech)
             try:
                 os.setpgid(proc.pid, 0)
             except (ProcessLookupError, PermissionError):
-                pass 
-            
+                pass
+
             if auth_method != "cert":
                 pw = creds.get("pw")
                 if pw:
-                    proc.stdin.write(pw + "\n")
-                    proc.stdin.flush()
+                    console.info("Sending password to stdin...")
+                    try:
+                        # Some versions of openconnect/sudo need a small delay before password
+                        time.sleep(1)
+                        proc.stdin.write(pw + "\n")
+                        proc.stdin.flush()
+                        console.info("Password sent successfully.")
+                    except Exception as e:
+                        console.error(f"Failed to write password to stdin: {e}")
+                        logger.debug(f"Failed to write password to stdin: {e}")
+
+            # Give it a moment to start and potentially fail
+            console.info("Waiting 5 seconds for process to initialize...")
+            time.sleep(5)
             
-            time.sleep(2)
-            
-            # Track the actual openconnect PID
-            for p in psutil.process_iter(['pid', 'name']):
-                if p.info['name'] == 'openconnect':
-                    self._pid = p.info['pid']
-            
-            if self._pid:
-                return True
-            else:
-                console.error("OpenConnect process not found after starting.")
+            # Check if the process died immediately
+            if proc.poll() is not None:
+                console.error(f"OpenConnect failed to start immediately with exit code {proc.returncode}.")
                 return False
+
+            console.info("Verifying connection process...")
+            # Instead of scanning all system processes (which can hang), 
+            # we look for children of the sudo process we just started.
+            try:
+                parent = psutil.Process(proc.pid)
+                children = parent.children(recursive=True)
+                oc_proc = next((p for p in children if "openconnect" in p.name().lower()), None)
+                
+                if oc_proc:
+                    self._pid = oc_proc.pid
+                    console.info(f"Successfully tracked OpenConnect PID: {self._pid}")
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+            # Fallback: check if the sudo process is still running
+            if proc.poll() is None:
+                self._pid = proc.pid
+                console.info(f"Tracking sudo PID: {self._pid}")
+                return True
+                
+            console.error("OpenConnect process not found after starting.")
+            return False
                 
         except Exception as e:
             console.error(f"Connection failed: {e}")
@@ -158,40 +218,77 @@ class LinuxVpnStrategy(VpnOSStrategy):
                     openconnect_pids.append(str(proc.info["pid"]))
         except Exception:
             pass
-
+ 
         if vpn_slice_pids:
             evidence.append(f"[Process] 'vpn-slice' is running (PIDs: {', '.join(vpn_slice_pids)})")
         else:
             evidence.append("[Process] 'vpn-slice' is NOT running")
-
+ 
         if openconnect_pids:
             evidence.append(f"[Process] 'openconnect' is running (PIDs: {', '.join(openconnect_pids)})")
+            # Extract routes from vpn-slice command line
+            try:
+                out = subprocess.check_output(["ps", "aux"], text=True)
+                for line in out.splitlines():
+                    if "vpn-slice" in line:
+                        routes = re.findall(r"\d{1,3}(?:\.\d{1,3}){3}(?:/\d{1,2})?", line)
+                        if routes:
+                            # Filter out the binary path if it contains an IP-like string
+                            filtered_routes = [r for r in routes if r not in line.split("/bin/")[0]]
+                            evidence.append(f"[OpenConnect] Routes configured via vpn-slice: {', '.join(filtered_routes)}")
+                        else:
+                            evidence.append("[OpenConnect] Running with vpn-slice but no routes detected in command line")
+                        break
+            except Exception:
+                pass
         else:
             evidence.append("[Process] 'openconnect' is NOT running")
 
+        # Routing table check
+        try:
+            current_org = self.get_current_org()
+            org_name = current_org.lower() if current_org else self.vpn.service_key.lower()
+            ip_range = organizations.get(org_name, {}).get("ip")
+            
+            if ip_range:
+                targets = ip_range if isinstance(ip_range, list) else [ip_range]
+                route_out = subprocess.check_output(["netstat", "-rn"], text=True)
+                for target in targets:
+                    search_ip = target.split("/")[0].strip()
+                    if re.search(rf"^\s*{re.escape(search_ip)}(\s+|/)", route_out, re.MULTILINE):
+                        display_net = target if "/" in target else f"{target}/16"
+                        evidence.append(f"[Routing Table] Route to {display_net} found in system routing table (netstat -rn) (Org: {org_name})")
+        except Exception:
+            pass
+ 
         return evidence
 
     def disconnect(self) -> None:
         console.info("Disconnecting OpenConnect...")
-        if self._pid:
-            try:
-                os.kill(self._pid, 2) # SIGINT
-                time.sleep(2)
-                if psutil.pid_exists(self._pid):
-                    os.kill(self._pid, 15) # SIGTERM
-            except ProcessLookupError:
-                pass
-            except Exception as e:
-                console.error(f"Error during targeted disconnect: {e}")
-        else:
-            from cloudmesh.ai.common.Shell import Shell
-            Shell.run("sudo pkill -SIGINT openconnect")
-        
         from cloudmesh.ai.common.Shell import Shell
+        
+        # 1. Try graceful shutdown
         try:
-            Shell.run("sudo pkill vpn-slice")
+            Shell.run("sudo pkill -SIGINT openconnect")
         except Exception:
             pass
+        try:
+            Shell.run("sudo pkill -SIGINT vpn-slice")
+        except Exception:
+            pass
+        time.sleep(2)
+        
+        # 2. Force kill any remaining processes to prevent PID accumulation
+        try:
+            Shell.run("sudo pkill -9 openconnect")
+        except Exception:
+            pass
+        try:
+            Shell.run("sudo pkill -9 vpn-slice")
+        except Exception:
+            pass
+        
+        logger.debug("[VPN] Forced disconnect of all openconnect and vpn-slice processes.")
 
     def get_reset_commands(self, service: Optional[str] = None) -> List[str]:
         commands = []
