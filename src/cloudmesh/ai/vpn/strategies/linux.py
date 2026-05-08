@@ -25,6 +25,14 @@ class LinuxVpnStrategy(VpnOSStrategy):
         return False
 
     def connect(self, creds: Dict[str, Any], vpn_name: str, no_split: bool) -> Union[bool, str, None]:
+        if not self.openconnect:
+            console.error("OpenConnect binary not found.")
+            console.info("Please install OpenConnect to use this VPN strategy:")
+            console.info("  Ubuntu/Debian: sudo apt update && sudo apt install openconnect")
+            console.info("  Fedora: sudo dnf install openconnect")
+            console.info("  Arch Linux: sudo pacman -S openconnect")
+            return False
+
         home = os.environ.get("HOME", "")
         cert_paths = [
             f"{home}/.ssh/uva/usher.cer" if not (os.path.exists("/.dockerenv") or (os.path.isfile("/proc/self/cgroup") and "docker" in open("/proc/self/cgroup").read())) else "/root/.ssh/uva/usher.cer",
