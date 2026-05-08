@@ -87,6 +87,9 @@ from cloudmesh.ai.vpn import profiles
 # Initialize Logger
 logger = get_contextual_logger("vpn")
 
+# Switch telemetry off by default for the VPN extension
+os.environ["CLOUDMESH_AI_TELEMETRY_DISABLED"] = "1"
+
 
 @click.group()
 def vpn_group():
