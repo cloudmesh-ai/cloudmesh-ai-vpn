@@ -409,6 +409,39 @@ def _query_llm_for_ranges(org):
         return []
 
 
+def _fetch_asn_ranges(org):
+    """Fetch IP ranges using ASN lookup via BGPView API."""
+    try:
+        # 1. Try to find the ASN for the organization
+        # We use a search query to BGPView or a similar service
+        # For simplicity and reliability, we'll use the BGPView ASN search
+        search_url = f"https://api.bgpview.io/search?query={org}"
+        response = requests.get(search_url, timeout=5)
+        response.raise_for_status()
+        results = response.json().get("results", [])
+        
+        if not results:
+            return []
+            
+        # Take the first ASN result
+        asn = results[0].get("asn")
+        if not asn:
+            return []
+            
+        logger.debug(f"[ASN] Found ASN {asn} for {org}")
+        
+        # 2. Get prefixes for this ASN
+        prefix_url = f"https://api.bgpview.io/asn/{asn}/prefixes"
+        prefix_resp = requests.get(prefix_url, timeout=5)
+        prefix_resp.raise_for_status()
+        prefixes_data = prefix_resp.json().get("ipv4_prefixes", [])
+        
+        ranges = [p.get("prefix") for p in prefixes_data if p.get("prefix")]
+        return ranges
+    except Exception as e:
+        logger.debug(f"ASN lookup failed for {org}: {e}")
+        return []
+
 def _fetch_searxng_ranges(query):
     """Fetch IP ranges using SearXNG JSON API with fallback instances."""
     # List of public SearXNG instances to try if the primary one fails
@@ -442,7 +475,7 @@ def _fetch_searxng_ranges(query):
 
 
 def _fetch_ip_ranges(query, org):
-    """Hybrid approach: Known data -> SearXNG -> LLM -> Advanced Scraper."""
+    """Hybrid approach: Known data -> ASN Lookup -> SearXNG -> LLM -> Advanced Scraper."""
     # 1. Known data (High confidence)
     known_data = {
         "virginia.edu": ["128.143.0.0/16", "137.54.0.0/16"],
@@ -455,7 +488,12 @@ def _fetch_ip_ranges(query, org):
         if k in query.lower() or k in org.lower():
             return v
 
-    # 2. SearXNG Metasearch (Structured API)
+    # 2. ASN Lookup (Authoritative Network Data)
+    asn_ranges = _fetch_asn_ranges(org)
+    if asn_ranges:
+        return asn_ranges
+
+    # 3. SearXNG Metasearch (Structured API)
     searx_ranges = _fetch_searxng_ranges(query)
     if searx_ranges:
         return searx_ranges
@@ -512,6 +550,7 @@ def search_cmd(org, debug):
         frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠴", "⠦", "⠧", "⠇", "⠏"]
         steps = [
             f"Analyzing {org} network patterns...",
+            "Performing ASN lookup...",
             "Querying SearXNG metasearch...",
             "Consulting LLM knowledge base...",
             "Parsing CIDR ranges from results...",
