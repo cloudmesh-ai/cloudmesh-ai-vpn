@@ -55,12 +55,6 @@ class MacOpenConnectPwStrategy(VpnOSStrategy):
 
         host = organizations[vpn_name]["host"]
         
-        if progress_callback:
-            progress_callback("Warming up sudo...")
-        # Warm up sudo to cache the system password
-        from cloudmesh.ai.common.sudo import Sudo
-        if not Sudo.password():
-            return False
 
         script_arg = ""
         if not no_split:

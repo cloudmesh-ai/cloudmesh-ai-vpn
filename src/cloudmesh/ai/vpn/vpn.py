@@ -70,6 +70,11 @@ class Vpn:
     def enabled(self) -> bool:
         return self.strategy.is_enabled()
 
+    def warmup_sudo(self) -> bool:
+        """Warm up sudo to cache the system password before starting progress UI."""
+        from cloudmesh.ai.common.sudo import Sudo
+        return Sudo.password() == 0
+
     def connect(self, creds: Optional[Dict[str, Any]] = None, progress_callback: Optional[callable] = None) -> Union[bool, str, None]:
         if creds is None:
             creds = {}

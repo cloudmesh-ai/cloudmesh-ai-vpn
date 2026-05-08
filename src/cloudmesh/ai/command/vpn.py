@@ -123,6 +123,11 @@ def _connect_logic(service, timeout, debug, choco, nosplit, provider, profile):
         if choco:
             vpn.strategy.check_dependencies(choco=True)
 
+        # Warm up sudo before starting the progress UI to avoid prompt interference
+        if not vpn.warmup_sudo():
+            console.error("Sudo password warm-up failed. Please check your system password.")
+            return
+
         # Connect to VPN with granular progress
         with Progress(
             SpinnerColumn(),

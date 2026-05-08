@@ -50,14 +50,6 @@ class LinuxVpnStrategy(VpnOSStrategy):
         
         host = organizations[vpn_name]["host"]
         
-        if progress_callback:
-            progress_callback("Warming up sudo password cache...")
-        # Warm up sudo to cache the system password
-        from cloudmesh.ai.common.sudo import Sudo
-        sudo_res = Sudo.password()
-        if sudo_res != 0:
-            console.error("Sudo password warm-up failed.")
-            return False
 
         if progress_callback:
             progress_callback("Preparing routing and connection parameters...")
