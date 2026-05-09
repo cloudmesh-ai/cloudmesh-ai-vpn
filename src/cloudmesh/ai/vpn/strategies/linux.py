@@ -167,8 +167,8 @@ class LinuxVpnStrategy(VpnOSStrategy):
             console.info("Waiting 5 seconds for process to initialize...")
             time.sleep(5)
             
-            # Check if the process died immediately
-            if proc.poll() is not None:
+            # Check if the process died immediately with an error
+            if proc.poll() is not None and proc.returncode != 0:
                 console.error(f"OpenConnect failed to start immediately with exit code {proc.returncode}.")
                 return False
 
