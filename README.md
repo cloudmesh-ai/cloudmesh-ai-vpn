@@ -206,6 +206,13 @@ The `vpn watch` command provides a high-fidelity view of your tunnel's health. U
 └────────────────────┴─────────────────────────────────────────┘
 ```
 
+### Command Shortcuts
+To speed up your workflow, the VPN extension supports simple character shortcuts for the most common actions:
+*   `+` : Shortcut for `connect`
+*   `-` : Shortcut for `disconnect`
+
+Example: `cme vpn +` is equivalent to `cme vpn connect`.
+
 ### Split-Tunneling with `vpn-slice`
 By default, this extension implements **Split-Tunneling** using `vpn-slice`. This is critical for maintaining performance and accessibility.
 
