@@ -29,8 +29,7 @@ dependencies = [
 version = {file = "VERSION"}
 
 [project.entry-points."cloudmesh.ai.command"]
-vpn = "command.vpn:register"
+vpn = "cloudmesh.ai.command.vpn:register"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["command*"]
