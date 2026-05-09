@@ -173,17 +173,14 @@ class LinuxVpnStrategy(VpnOSStrategy):
                 return False
 
             console.info("Verifying connection process...")
-            # Instead of scanning all system processes (which can hang), 
-            # we look for children of the sudo process we just started.
+            # Verify if OpenConnect is running. Since -b detaches the process,
+            # we check for any running openconnect process.
             try:
-                parent = psutil.Process(proc.pid)
-                children = parent.children(recursive=True)
-                oc_proc = next((p for p in children if "openconnect" in p.name().lower()), None)
-                
-                if oc_proc:
-                    self._pid = oc_proc.pid
-                    console.info(f"Successfully tracked OpenConnect PID: {self._pid}")
-                    return True
+                for p in psutil.process_iter(["pid", "name"]):
+                    if p.info["name"] and "openconnect" in p.info["name"].lower():
+                        self._pid = p.info["pid"]
+                        console.info(f"Successfully tracked OpenConnect PID: {self._pid}")
+                        return True
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
