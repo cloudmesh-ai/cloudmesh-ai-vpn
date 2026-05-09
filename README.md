@@ -52,7 +52,7 @@ pip install cloudmesh-ai-vpn
 **Dependencies & Chocolatey**: 
 This extension can attempt to manage Windows dependencies using **Chocolatey**. You can use the `--choco` flag when connecting to trigger dependency checks and installation:
 ```powershell
-cme vpn connect --choco
+cmc vpn connect --choco
 ```
 If you prefer manual installation, ensure you have a compatible OpenConnect client installed on your system.
 
@@ -62,7 +62,7 @@ If you prefer manual installation, ensure you have a compatible OpenConnect clie
 
 **1. Connect to the default VPN service**
 ```bash
-cme vpn connect
+cmc vpn connect
 ```
 > ```text
 > Password: ───────
@@ -74,7 +74,7 @@ cme vpn connect
 
 **2. Connect with a specific service and provider**
 ```bash
-cme vpn connect --service uva-hpc --provider openconnect-keychain
+cmc vpn connect --service uva-hpc --provider openconnect-keychain
 ```
 > ```text
 > ⠼ Checking dependencies...
@@ -85,7 +85,7 @@ cme vpn connect --service uva-hpc --provider openconnect-keychain
 
 **3. Disconnect from the VPN**
 ```bash
-cme vpn disconnect
+cmc vpn disconnect
 ```
 > ```text
 > ℹ Disconnecting OpenConnect...
@@ -96,7 +96,7 @@ cme vpn disconnect
 
 **4. Check if the VPN is connected**
 ```bash
-cme vpn status
+cmc vpn status
 ```
 > ```text
 > True
@@ -104,7 +104,7 @@ cme vpn status
 
 **5. Get current location and connection info**
 ```bash
-cme vpn info
+cmc vpn info
 ```
 > ```text
 > ┌──────────────────────────────────────────────────────────┐
@@ -123,7 +123,7 @@ cme vpn info
 
 **6. Reset VPN credentials**
 ```bash
-cme vpn reset --service uva
+cmc vpn reset --service uva
 ```
 > ```text
 > ✓ Successfully reset routes for uva
@@ -131,7 +131,7 @@ cme vpn reset --service uva
 
 **7. Manage VPN profiles**
 ```bash
-cme vpn profile list
+cmc vpn profile list
 ```
 > ```text
 > Default: {'service': 'uva'}
@@ -140,7 +140,7 @@ cme vpn profile list
 
 **8. Manage Keychain passphrases**
 ```bash
-cme vpn keychain
+cmc vpn keychain
 ```
 > ```text
 > ℹ Searching Keychain for service: uva-key-pass...
@@ -149,7 +149,7 @@ cme vpn keychain
 
 **9. Monitor connection**
 ```bash
-cme vpn watch 10
+cmc vpn watch 10
 ```
 *(See Appendix for detailed `vpn watch` output)*
 
@@ -211,7 +211,7 @@ To speed up your workflow, the VPN extension supports simple character shortcuts
 *   `+` : Shortcut for `connect`
 *   `-` : Shortcut for `disconnect`
 
-Example: `cme vpn +` is equivalent to `cme vpn connect`.
+Example: `cmc vpn +` is equivalent to `cmc vpn connect`.
 
 ### Split-Tunneling with `vpn-slice`
 By default, this extension implements **Split-Tunneling** using `vpn-slice`. This is critical for maintaining performance and accessibility.
