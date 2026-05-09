@@ -8,7 +8,7 @@ This extension provides tools to manage VPN connections, profiles, and keys, spe
 
 ## Installation
 
-### 🍎 macOS
+### macOS
 **Recommended: Using pipx**
 For the best experience with CLI tools, use `pipx` to install `cloudmesh-ai-vpn` in an isolated environment.
 ```bash
@@ -27,7 +27,7 @@ pip install cloudmesh-ai-vpn
 brew install openconnect vpn-slice
 ```
 
-### 🐧 Linux
+### Linux
 **Recommended: Using pipx**
 ```bash
 pipx install cloudmesh-ai-vpn
@@ -41,7 +41,7 @@ pip install cloudmesh-ai-vpn
 
 **Dependencies**: Install `openconnect` and `vpn-slice` using your package manager (e.g., `apt` or `dnf`).
 
-### 🪟 Windows
+### Windows
 **Using pip**
 ```powershell
 pip install cloudmesh-ai-vpn
@@ -170,13 +170,13 @@ cme vpn watch 10
 
 ## Appendix: Advanced Functionality
 
-### 🚀 Granular Progress Reporting
+### Granular Progress Reporting
 The extension now features a rich CLI interface that provides real-time feedback during the connection process. Instead of a hanging terminal, you will see a dynamic spinner and status updates:
 *   **Dependency Checks**: Verifies `openconnect` and `vpn-slice` are installed.
 *   **Sudo Warm-up**: Handles system authentication before the UI starts to prevent prompt interference.
 *   **Provider-Specific Logs**: Clearly indicates which authentication method (Keychain, Password, or Decrypted Cert) is being used.
 
-### 🛠 macOS Provider Guide
+### macOS Provider Guide
 Depending on your security preference and available files, you can choose from several providers via the `--provider` flag:
 
 | Provider | Use Case | Requirement |
@@ -186,7 +186,7 @@ Depending on your security preference and available files, you can choose from s
 | `openconnect-pw` | Standard authentication. | Username and Password |
 | `mac-cisco` | Legacy support. | Cisco AnyConnect Client installed |
 
-### 🔍 Connection Monitoring (`vpn watch`)
+### Connection Monitoring (`vpn watch`)
 The `vpn watch` command provides a high-fidelity view of your tunnel's health. Unlike simple status checks, it performs a multi-layered verification:
 1.  **Process Check**: Verifies that `openconnect` and `vpn-slice` processes are active.
 2.  **Route Verification**: Executes `netstat -rn` to confirm that the specific IP ranges for your organization are actually present in the system routing table.
@@ -206,24 +206,24 @@ The `vpn watch` command provides a high-fidelity view of your tunnel's health. U
 └────────────────────┴─────────────────────────────────────────┘
 ```
 
-### 🌐 Split-Tunneling with `vpn-slice`
+### Split-Tunneling with `vpn-slice`
 By default, this extension implements **Split-Tunneling** using `vpn-slice`. This is critical for maintaining performance and accessibility.
 
 *   **Split-Tunnel (Default)**: Only traffic destined for the VPN's specific IP ranges (e.g., UVA internal networks) is routed through the tunnel. Your general internet traffic (web browsing, streaming, etc.) continues to use your local gateway.
 *   **Full-Tunnel (`--nosplit`)**: All system traffic is routed through the VPN. This is useful for high-security environments but will significantly increase latency for non-VPN traffic and may break local network access.
 *   **How it works**: The extension identifies the required IP ranges from the organization config and instructs `vpn-slice` to create precise routing entries in your OS.
 
-### 📂 Zero-Config File Structure
+### Zero-Config File Structure
 For the `openconnect-decrypted` and `openconnect-keychain` providers to work without extra flags, place your certificates in the following default location:
 
 ```text
 ~/.ssh/uva/
-├── user.crt          # Public Certificate
-├── user.key          # Private Key
-└── decrypted_user.pem # Decrypted PEM (for decrypted provider)
+    ├── user.crt          # Public Certificate
+    ├── user.key          # Private Key
+    └── user.pem          # Decrypted PEM (for decrypted provider)
 ```
 
-### 🎓 UVA Custom Configuration
+### UVA Custom Configuration
 If you are a UVA user and need to override the default organization settings, you can use a custom YAML configuration file.
 
 **Customizing your Identity**:
