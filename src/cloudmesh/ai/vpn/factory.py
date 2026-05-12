@@ -1,14 +1,14 @@
 import os
+from importlib import import_module
 from typing import Optional, Type
 from cloudmesh.ai.common.sys import os_is_linux, os_is_mac, os_is_windows
 from cloudmesh.ai.vpn.strategies.base import VpnOSStrategy
-from cloudmesh.ai.vpn.strategies.windows import WindowsVpnStrategy
-from cloudmesh.ai.vpn.strategies.linux import LinuxVpnStrategy
-from cloudmesh.ai.vpn.strategies.mac_openconnect_decrypted import MacOpenConnectDecryptedStrategy
-from cloudmesh.ai.vpn.strategies.mac_openconnect_pw import MacOpenConnectPwStrategy
-from cloudmesh.ai.vpn.strategies.mac_openconnect_keychain import MacOpenConnectKeychainStrategy
-from cloudmesh.ai.vpn.strategies.mac_cisco import MacCiscoStrategy
 from cloudmesh.ai.vpn.strategies.mock import MockVpnStrategy
+
+
+def _load_factory(module_name: str, function_name: str):
+    module = import_module(module_name)
+    return getattr(module, function_name)
 
 def get_vpn_strategy_class(provider: Optional[str] = None) -> Type[VpnOSStrategy]:
     """
@@ -18,19 +18,18 @@ def get_vpn_strategy_class(provider: Optional[str] = None) -> Type[VpnOSStrategy
         return MockVpnStrategy
     
     if os_is_windows():
-        return WindowsVpnStrategy
+        return _load_factory(
+            "cloudmesh.ai.vpn.windows_factory", "get_windows_strategy_class"
+        )(provider)
     
     if os_is_linux():
-        return LinuxVpnStrategy
+        return _load_factory(
+            "cloudmesh.ai.vpn.linux_factory", "get_linux_strategy_class"
+        )(provider)
     
     if os_is_mac():
-        mac_strategies = {
-            "openconnect-decrypted": MacOpenConnectDecryptedStrategy,
-            "openconnect-pw": MacOpenConnectPwStrategy,
-            "openconnect-keychain": MacOpenConnectKeychainStrategy,
-            "cisco": MacCiscoStrategy,
-        }
-        provider_key = provider if provider else "openconnect-decrypted"
-        return mac_strategies.get(provider_key, MacOpenConnectDecryptedStrategy)
+        return _load_factory(
+            "cloudmesh.ai.vpn.mac_factory", "get_mac_strategy_class"
+        )(provider)
     
     raise NotImplementedError("Operating System not supported")
