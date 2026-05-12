@@ -72,6 +72,9 @@ class Vpn:
 
     def warmup_sudo(self) -> bool:
         """Warm up sudo to cache the system password before starting progress UI."""
+        if os_is_windows():
+            return True
+
         from cloudmesh.ai.common.sudo import Sudo
         return Sudo.password() == 0
 
@@ -80,7 +83,7 @@ class Vpn:
             creds = {}
         
         no_split = creds.get("nosplit", True)
-        vpn_name = creds.get("service", "uva")
+        vpn_name = creds.get("service", self.service_key)
 
         # Capture state before action
         before_org = self.strategy.get_current_org()
@@ -203,10 +206,10 @@ class Vpn:
         if temp_config.get("auth") == "pw":
             # 1. Determine username: Profile override -> Keyring -> Prompt
             username = self.config.get("user")
-            if not username:
+            if not isinstance(username, str) or not username:
                 username = kr.get_password(org, "cloudmesh-user")
 
-            if username and username.upper() == "TBD":
+            if isinstance(username, str) and username.upper() == "TBD":
                 console.error(
                     f"Username for {org} is set to 'TBD'. Please update your profile or keyring."
                 )

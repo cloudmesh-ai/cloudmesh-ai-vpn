@@ -15,6 +15,33 @@ from cloudmesh.ai.vpn.windows import win_install, ensure_choco_bin_on_process_pa
 def path_expand(path):
     return os.path.expanduser(path)
 
+
+def _normalize_cert_path(value: Any) -> Optional[str]:
+    if isinstance(value, list):
+        return value[0] if value else None
+    if isinstance(value, str):
+        return value
+    return None
+
+
+def _cidr_to_route_parts(cidr: str) -> Optional[tuple[str, str, str]]:
+    if "/" not in cidr:
+        return None
+
+    network, prefix = cidr.split("/", 1)
+    try:
+        prefix_len = int(prefix)
+    except ValueError:
+        return None
+
+    if prefix_len < 0 or prefix_len > 32:
+        return None
+
+    mask_bits = ("1" * prefix_len).ljust(32, "0")
+    octets = [str(int(mask_bits[i:i + 8], 2)) for i in range(0, 32, 8)]
+    return network, ".".join(octets), str(prefix_len)
+
+
 class WindowsVpnStrategy(VpnOSStrategy):
     def __init__(self, vpn_context: 'Vpn'):
         super().__init__(vpn_context)
@@ -105,12 +132,25 @@ class WindowsVpnStrategy(VpnOSStrategy):
         iprange = org_config.get("ip")
         if domain: env_vars["VPN_DOMAIN"] = domain
         if iprange:
-            env_vars.update({
-                "CISCO_SPLIT_INC": "2",
-                "CISCO_SPLIT_INC_1_ADDR": iprange if isinstance(iprange, str) else " ".join(iprange),
-                "CISCO_SPLIT_INC_1_MASK": "255.255.0.0",
-                "CISCO_SPLIT_INC_1_MASKLEN": "16",
-            })
+            routes = [iprange] if isinstance(iprange, str) else list(iprange)
+            route_index = 0
+            for route in routes:
+                if not isinstance(route, str):
+                    continue
+
+                route = route.strip()
+                parsed = _cidr_to_route_parts(route)
+                if not parsed:
+                    continue
+
+                network, mask, prefix_len = parsed
+                env_vars[f"CISCO_SPLIT_INC_{route_index}_ADDR"] = network
+                env_vars[f"CISCO_SPLIT_INC_{route_index}_MASK"] = mask
+                env_vars[f"CISCO_SPLIT_INC_{route_index}_MASKLEN"] = prefix_len
+                route_index += 1
+
+            if route_index:
+                env_vars["CISCO_SPLIT_INC"] = str(route_index)
 
         # Determine User
         user_val = creds.get('user')
@@ -130,7 +170,9 @@ class WindowsVpnStrategy(VpnOSStrategy):
         
         if auth_method == "cert":
             # Use cert from YAML or default path
-            cert_path = org_config.get("cert") or creds.get("cert_path")
+            cert_path = _normalize_cert_path(org_config.get("cert")) or _normalize_cert_path(
+                creds.get("cert_path")
+            )
             if not cert_path:
                 cert_path = "~/.ssh/uva/decrypted_user.pem"
             

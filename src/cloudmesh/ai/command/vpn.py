@@ -131,6 +131,17 @@ def _connect_logic(service, timeout, debug, choco, nosplit, provider, profile):
             console.error("Sudo password warm-up failed. Please check your system password.")
             return
 
+        connect_creds = {
+            "nosplit": nosplit,
+            "service": vpn.service_key,
+        }
+
+        if vpn.is_user_auth(vpn.service_key):
+            fetched = vpn.pw_fetcher(vpn.service_key)
+            if not fetched:
+                return
+            connect_creds["user"], connect_creds["pw"] = fetched
+
         # Connect to VPN with granular progress
         with Progress(
             SpinnerColumn(),
@@ -142,7 +153,7 @@ def _connect_logic(service, timeout, debug, choco, nosplit, provider, profile):
             def progress_callback(msg: str):
                 progress.update(task, description=msg)
 
-            vpn.connect({"nosplit": nosplit}, progress_callback=progress_callback)
+            vpn.connect(connect_creds, progress_callback=progress_callback)
     except VpnDependencyError as e:
         console.error(str(e))
         return
