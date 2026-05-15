@@ -4,4 +4,4 @@ This page provides the API reference for the `cloudmesh-ai-vpn` library.
 
 ## API Documentation
 
-::: cloudmesh.ai.command.vpn
+::: cloudmesh.ai.vpn
