@@ -31,6 +31,7 @@ help:
 	@echo "  tag           - Create a git tag based on current version and push"
 	@echo "  release       - Full Production Cycle: upload + tag"
 	@echo "  sync          - Sync changed .py files to remote server"
+	@echo "  doc           - Build documentation locally"
 	@echo
 
 # --- DEVELOPMENT & TESTING ---
