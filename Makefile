@@ -12,7 +12,7 @@ VERSION_FILE := VERSION
 GIT          := git
 PYENVVERSION := $(shell pyenv version-name)
 
-.PHONY: help install clean build test reinstall \
+.PHONY: help install clean build test reinstall \ doc
         check tag release test-html test-cov setup-test uninstall-all \
         tmp-setup sync
 
@@ -75,6 +75,12 @@ tag:
 
 release: upload tag
 	@echo "Production release and tagging complete."
+
+
+# --- DOCUMENTATION ---
+
+doc:
+	mkdocs build
 
 # --- REMOTE SYNC ---
 
