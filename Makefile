@@ -84,6 +84,8 @@ doc:
 
 
 view:
+	lsof -ti:8000 | xargs kill -9
+	$(PIP) install -e ../cloudmesh-ai-theme
 	mkdocs serve --livereload
 # --- REMOTE SYNC ---
 
