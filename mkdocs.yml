@@ -3,14 +3,16 @@ extra_css:
 - css/custom.css
 nav:
 - Home: index.md
-- Technology: technology.md
+- Documents: 
+  - README: README.md
+  - commands: commands.md
+  - Technology: technology.md
 - Project:
   - Changelog: CHANGELOG.md
   - GitHub: https://github.com/cloudmesh-ai/cloudmesh-ai-vpn
   - Issues: https://github.com/cloudmesh-ai/cloudmesh-ai-vpn/issues
 - API Reference: api.md
-- commands: commands.md
-- README: README.md
+
 plugins:
 - search
 - mkdocstrings:
