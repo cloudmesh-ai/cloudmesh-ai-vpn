@@ -9,17 +9,11 @@ extra_css:
 - css/custom.css
 nav:
 - Home: index.md
+- Technology:  technology.md
 - Project:
   - Changelog: CHANGELOG.md
-- Documentation:
-  - User Guide: user.md
-  - IO: io.md
-  - Logging: logging.md
-  - Stopwatch: stopwatch.md
-  - System: sys.md
-  - Telemetry: telemetry.md
-  - Time: time.md
-  - Aggregation: aggregation.md
+  - GitHub: https://github.com/cloudmesh-ai/cloudmesh-ai-vpn
+  - Issues: https://github.com/cloudmesh-ai/cloudmesh-ai-vpn/issues
 - API Reference: api.md
 plugins:
 - search
