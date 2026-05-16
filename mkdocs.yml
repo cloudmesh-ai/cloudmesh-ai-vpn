@@ -4,7 +4,7 @@ extra_css:
 nav:
 - Home: index.md
 - Documents: 
-  - README: README.md
+  - README: readme.md
   - commands: commands.md
   - Technology: technology.md
 - Project:
