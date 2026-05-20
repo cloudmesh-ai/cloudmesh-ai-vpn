@@ -251,7 +251,6 @@ cloudmesh:
       cert:
         - ~/.ssh/uva/user.pem
       ip: 
-        - rivanna.hpc.virginia.edu 
         - 128.143.0.0/16 
         - 137.54.0.0/16
         - 199.111.0.0/16
