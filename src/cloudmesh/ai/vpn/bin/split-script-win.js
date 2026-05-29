@@ -58,8 +58,25 @@ function appendSplitInclude(addr, mask, maskLen) {
     splitIncCount += 1;
 }
 
+function appendConfiguredSplitIncludes() {
+    var extraCount = parseInt(env("EXTRA_SPLIT_INC_COUNT"), 10);
+    if (isNaN(extraCount) || extraCount < 1) {
+        return;
+    }
+
+    for (var i = 0; i < extraCount; i++) {
+        var addr = env("EXTRA_SPLIT_INC_" + i + "_ADDR");
+        var mask = env("EXTRA_SPLIT_INC_" + i + "_MASK");
+        var maskLen = env("EXTRA_SPLIT_INC_" + i + "_MASKLEN");
+        if (addr && mask && maskLen) {
+            appendSplitInclude(addr, mask, maskLen);
+        }
+    }
+}
+
 appendSplitInclude("10.0.0.0", "255.0.0.0", "8");
 appendSplitInclude("172.16.0.0", "255.240.0.0", "12");
+appendConfiguredSplitIncludes();
 env("CISCO_SPLIT_INC") = String(splitIncCount);
 
 // Number of split-exclude rules to add to the routing table (these will be routed via default outbound internet connection).

@@ -2,6 +2,7 @@ import os
 import sys
 import subprocess
 import time
+import re
 import psutil
 from typing import Any, Dict, List, Union, Optional
 
@@ -106,6 +107,71 @@ class WindowsVpnStrategy(VpnOSStrategy):
                 return True
         return False
 
+    def _route_exists(self, cidr: str) -> bool:
+        parsed = _cidr_to_route_parts(cidr)
+        if not parsed:
+            return False
+
+        network, mask, _ = parsed
+        try:
+            result = subprocess.run(
+                ["route", "print", network],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except Exception:
+            return False
+
+        route_pattern = rf"\b{re.escape(network)}\s+{re.escape(mask)}\b"
+        return bool(re.search(route_pattern, result.stdout))
+
+    def _nrpt_rule_exists(self, domain: str) -> bool:
+        if not domain:
+            return False
+
+        ps_command = (
+            "Get-DnsClientNrptRule | "
+            f"Where-Object {{ $_.Namespace -eq '.{domain}' }} | "
+            "Select-Object -First 1 -ExpandProperty Namespace"
+        )
+        try:
+            result = subprocess.run(
+                ["powershell.exe", "-Command", ps_command],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except Exception:
+            return False
+
+        return result.returncode == 0 and f".{domain}" in (result.stdout or "")
+
+    def _wait_for_split_tunnel_ready(self, proc: subprocess.Popen, domain: Optional[str], routes: List[str], timeout: int = 25) -> bool:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                return False
+
+            dns_ready = True
+            if domain:
+                dns_ready = self._nrpt_rule_exists(domain)
+
+            route_ready = True
+            for route in routes:
+                if isinstance(route, str) and "/" in route:
+                    if self._route_exists(route):
+                        route_ready = True
+                        break
+                    route_ready = False
+
+            if dns_ready and route_ready:
+                return True
+
+            time.sleep(1)
+
+        return proc.poll() is None
+
     def connect(self, creds: Dict[str, Any], vpn_name: str, no_split: bool, progress_callback: Optional[callable] = None) -> Union[bool, str, None]:
         if progress_callback:
             progress_callback("Checking administrator privileges...")
@@ -145,13 +211,15 @@ class WindowsVpnStrategy(VpnOSStrategy):
                     continue
 
                 network, mask, prefix_len = parsed
-                env_vars[f"CISCO_SPLIT_INC_{route_index}_ADDR"] = network
-                env_vars[f"CISCO_SPLIT_INC_{route_index}_MASK"] = mask
-                env_vars[f"CISCO_SPLIT_INC_{route_index}_MASKLEN"] = prefix_len
+                env_vars[f"EXTRA_SPLIT_INC_{route_index}_ADDR"] = network
+                env_vars[f"EXTRA_SPLIT_INC_{route_index}_MASK"] = mask
+                env_vars[f"EXTRA_SPLIT_INC_{route_index}_MASKLEN"] = prefix_len
                 route_index += 1
 
             if route_index:
-                env_vars["CISCO_SPLIT_INC"] = str(route_index)
+                env_vars["EXTRA_SPLIT_INC_COUNT"] = str(route_index)
+        else:
+            routes = []
 
         # Determine User
         user_val = creds.get('user')
@@ -245,13 +313,16 @@ class WindowsVpnStrategy(VpnOSStrategy):
                     proc.stdin.flush()
             
             time.sleep(2)
-            
+
             # Track the actual openconnect PID
             for p in psutil.process_iter(['pid', 'name']):
                 if p.info['name'] == 'openconnect.exe':
                     self._pid = p.info['pid']
-            
+
             if self._pid:
+                if not no_split:
+                    if not self._wait_for_split_tunnel_ready(proc, domain, routes):
+                        console.warning("OpenConnect started, but split DNS/routes were not fully ready before timeout.")
                 return True
             else:
                 console.error("OpenConnect process not found after starting.")
