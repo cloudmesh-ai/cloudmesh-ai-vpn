@@ -60,7 +60,8 @@ class WindowsVpnStrategy(VpnOSStrategy):
         ])
 
     def _stop_vpn_services(self) -> None:
-        console.warning("Restarting vpnagent to avoid conflict")
+        if self.vpn.verbosity >= 1:
+            console.warning("Restarting vpnagent to avoid conflict")
         for program in ["vpnagent.exe", "vpncli.exe"]:
             subprocess.run(
                 ["taskkill", "/im", program, "/F"],
@@ -194,6 +195,9 @@ class WindowsVpnStrategy(VpnOSStrategy):
         script_location = os.path.join(os.path.dirname(__file__), "..", "bin", "split-script-win.js")
         
         env_vars = os.environ.copy()
+        # Pass log level to the JS script (0=ERROR, 1=INFO, 2=DEBUG, 3=TRACE)
+        # JS script expects: ERROR=0, INFO=1, DEBUG=2, TRACE=3
+        env_vars["LOG_LEVEL"] = str(min(self.vpn.verbosity, 3))
         org_config = organizations.get(vpn_name, {})
         domain = org_config.get("domain")
         iprange = org_config.get("ip")
