@@ -104,21 +104,36 @@ def vpn_group():
 
 from cloudmesh.ai.vpn.vpn import Vpn, VpnDependencyError
 
-def _connect_logic(service, timeout, debug, choco, nosplit, provider, profile):
-    if debug:
+def _get_verbosity(verbosity):
+    if verbosity == 0:
+        v_count = 0
+        for arg in sys.argv:
+            if arg in ["-v", "--verbose"]:
+                v_count += 1
+            elif arg == "-vv":
+                v_count += 2
+            elif arg.startswith("-") and not arg.startswith("--"):
+                # Handle clustered flags like -xv
+                v_count += arg.count("v")
+        return v_count
+    return verbosity
+
+def _connect_logic(service, timeout, verbosity, choco, nosplit, provider, profile):
+    verbosity = _get_verbosity(verbosity)
+    if verbosity >= 1:
         logger.setLevel(logging.DEBUG)
 
     logger.debug(f"[VPN] Connecting to service: {service if service else 'Default'}...")
     logger.debug(f"      Provider: {provider}")
     logger.debug(f"      Profile: {profile if profile else 'Default'}")
     logger.debug(f"      Timeout: {timeout}")
-    logger.debug(f"      Debug: {debug}, Choco: {choco}, NoSplit: {nosplit}")
+    logger.debug(f"      Verbosity: {verbosity}, Choco: {choco}, NoSplit: {nosplit}")
 
     try:
         vpn = Vpn(
             service=service,
             timeout=timeout,
-            debug=debug,
+            verbosity=verbosity,
             provider=provider,
             profile_name=profile,
         )
@@ -143,10 +158,11 @@ def _connect_logic(service, timeout, debug, choco, nosplit, provider, profile):
             connect_creds["user"], connect_creds["pw"] = fetched
 
         # Connect to VPN with granular progress
+        # Transient progress (disappears on success) only when quiet
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
-            transient=True,
+            transient=(verbosity == 0),
         ) as progress:
             task = progress.add_task(description="Initializing...", total=None)
             
@@ -164,14 +180,14 @@ def _connect_logic(service, timeout, debug, choco, nosplit, provider, profile):
 @vpn_group.command(name="connect")
 @click.option("--service", default=None, help="VPN service name.")
 @click.option("--timeout", default=None, help="Connection timeout.")
-@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
+@click.option("-v", "verbosity", count=True, default=0, help="Debug mode (-v, -vv).")
 @click.option("--choco", is_flag=True, default=False, help="Install chocolatey.")
 @click.option("--nosplit", is_flag=True, default=False, help="Disable split tunneling.")
 @click.option(
     "--provider", default="openconnect-decrypted", help="VPN provider for macOS."
 )
 @click.option("--profile", default=None, help="VPN profile to use.")
-def connect_cmd(service, timeout, debug, choco, nosplit, provider, profile):
+def connect_cmd(service, timeout, verbosity, choco, nosplit, provider, profile):
     """
     Connects to the UVA Anywhere VPN.
 
@@ -179,96 +195,100 @@ def connect_cmd(service, timeout, debug, choco, nosplit, provider, profile):
     You can connect to other VPNs while specifying their names
     as given to you by the VPN provider with e service option.
     """
-    _connect_logic(service, timeout, debug, choco, nosplit, provider, profile)
+    _connect_logic(service, timeout, verbosity, choco, nosplit, provider, profile)
 
 
 @vpn_group.command(name="+")
 @click.option("--service", default=None, help="VPN service name.")
 @click.option("--timeout", default=None, help="Connection timeout.")
-@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
+@click.option("-v", "verbosity", count=True, default=0, help="Debug mode (-v, -vv).")
 @click.option("--choco", is_flag=True, default=False, help="Install chocolatey.")
 @click.option("--nosplit", is_flag=True, default=False, help="Disable split tunneling.")
 @click.option(
     "--provider", default="openconnect-decrypted", help="VPN provider for macOS."
 )
 @click.option("--profile", default=None, help="VPN profile to use.")
-def connect_alias_cmd(service, timeout, debug, choco, nosplit, provider, profile):
+def connect_alias_cmd(service, timeout, verbosity, choco, nosplit, provider, profile):
     """Alias for 'connect'"""
-    _connect_logic(service, timeout, debug, choco, nosplit, provider, profile)
+    _connect_logic(service, timeout, verbosity, choco, nosplit, provider, profile)
 
 
-def _disconnect_logic(debug):
-    if debug:
+def _disconnect_logic(verbosity):
+    verbosity = _get_verbosity(verbosity)
+    if verbosity >= 1:
         logger.setLevel(logging.DEBUG)
-    logger.debug(f"[VPN] Disconnecting... (Debug: {debug})")
+    logger.debug(f"[VPN] Disconnecting... (Verbosity: {verbosity})")
 
-    vpn = Vpn(debug=debug)
+    vpn = Vpn(verbosity=verbosity)
     vpn.disconnect()
 
     logger.debug("[VPN] Disconnection process completed.")
 
 
 @vpn_group.command(name="disconnect")
-@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
-def disconnect_cmd(debug):
+@click.option("-v", "verbosity", count=True, default=0, help="Debug mode (-v, -vv).")
+def disconnect_cmd(verbosity):
     """Disconnects from the VPN."""
-    _disconnect_logic(debug)
+    _disconnect_logic(verbosity)
 
 
 @vpn_group.command(name="-")
-@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
-def disconnect_alias_cmd(debug):
+@click.option("-v", "verbosity", count=True, default=0, help="Debug mode (-v, -vv).")
+def disconnect_alias_cmd(verbosity):
     """Alias for 'disconnect'"""
-    _disconnect_logic(debug)
+    _disconnect_logic(verbosity)
 
 
 @vpn_group.command(name="status")
-@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
-def status_cmd(debug):
+@click.option("-v", "verbosity", count=True, default=0, help="Debug mode (-v, -vv).")
+def status_cmd(verbosity):
     """
     Prints out "True" if the vpn is connected
     and "False" if it is not.
     """
-    if debug:
+    verbosity = _get_verbosity(verbosity)
+    if verbosity >= 1:
         logger.setLevel(logging.DEBUG)
 
-    vpn = Vpn(debug=debug)
+    vpn = Vpn(verbosity=verbosity)
     enabled = vpn.enabled()
     console.print(str(enabled))
 
-    if debug:
+    if verbosity >= 1:
         logger.debug(f"[VPN] VPN status check: enabled={enabled}")
 
 
 @vpn_group.command(name="info")
-@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
-def info_cmd(debug):
+@click.option("-v", "verbosity", count=True, default=0, help="Debug mode (-v, -vv).")
+def info_cmd(verbosity):
     """
     Prints out information about your current location as
     obtained via the vpn connection.
     """
-    if debug:
+    verbosity = _get_verbosity(verbosity)
+    if verbosity >= 1:
         logger.setLevel(logging.DEBUG)
 
-    vpn = Vpn(debug=debug)
+    vpn = Vpn(verbosity=verbosity)
     vpn.info()
 
-    if debug:
+    if verbosity >= 1:
         logger.debug("[VPN Info] IP information retrieved and displayed.")
 
 
 @vpn_group.command(name="reset")
 @click.option("--service", default=None, help="VPN service to reset.")
-@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
-def reset_cmd(service, debug):
+@click.option("-v", "verbosity", count=True, default=0, help="Debug mode (-v, -vv).")
+def reset_cmd(service, verbosity):
     """Clears the credentials for the VPN service."""
-    if debug:
+    verbosity = _get_verbosity(verbosity)
+    if verbosity >= 1:
         logger.setLevel(logging.DEBUG)
 
     target = service if service else "default"
     logger.debug(f"Resetting credentials for service: {target}")
 
-    vpn = Vpn(debug=debug)
+    vpn = Vpn(verbosity=verbosity)
     if vpn.reset_routes(service):
         console.ok(f"Successfully reset routes for {target}")
     else:
@@ -280,10 +300,11 @@ def reset_cmd(service, debug):
 @vpn_group.command(name="watch")
 @click.argument("interval", default="10")
 @click.option("--count", default=None, help="Number of times to check before stopping.")
-@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
-def watch_cmd(interval, count, debug):
+@click.option("-v", "verbosity", count=True, default=0, help="Debug mode (-v, -vv).")
+def watch_cmd(interval, count, verbosity):
     """Monitors the VPN connection at a given interval."""
-    if debug:
+    verbosity = _get_verbosity(verbosity)
+    if verbosity >= 1:
         logger.setLevel(logging.DEBUG)
 
     import time
@@ -304,7 +325,7 @@ def watch_cmd(interval, count, debug):
     else:
         logger.debug("[VPN] Monitoring... (Press Ctrl+C to stop)")
 
-    vpn = Vpn(debug=debug)
+        vpn = Vpn(verbosity=verbosity)
     iteration = 0
 
     from rich.console import Group
@@ -383,8 +404,8 @@ def watch_cmd(interval, count, debug):
 @vpn_group.command(name="keychain")
 @click.argument("action", default="add")
 @click.option("--service", default="uva", help="VPN service name.")
-@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
-def keychain_cmd(action, service, debug):
+@click.option("-v", "verbosity", count=True, default=0, help="Debug mode (-v, -vv).")
+def keychain_cmd(action, service, verbosity):
     """
     Securely adds or removes the VPN private key passphrase to the macOS Keychain.
 
@@ -392,10 +413,11 @@ def keychain_cmd(action, service, debug):
       add    (default) adds the passphrase
       remove removes the passphrase
     """
-    if debug:
+    verbosity = _get_verbosity(verbosity)
+    if verbosity >= 1:
         logger.setLevel(logging.DEBUG)
 
-    vpn = Vpn(debug=debug)
+    vpn = Vpn(verbosity=verbosity)
 
     if action == "remove":
         logger.debug(
@@ -429,13 +451,14 @@ def key_group():
 @key_group.command(name="init")
 @click.option("--p12", default="~/.ssh/uva/user.p12", help="Path to the user.p12 bundle.")
 @click.option("--out", default="~/.ssh/uva/", help="Output directory for extracted keys.")
-@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
-def init_key_cmd(p12, out, debug):
+@click.option("-v", "verbosity", count=True, default=0, help="Debug mode (-v, -vv).")
+def init_key_cmd(p12, out, verbosity):
     """Initialize VPN keys from a .p12 bundle. Extracts .crt, .key, and creates decrypted .pem."""
-    if debug:
+    verbosity = _get_verbosity(verbosity)
+    if verbosity >= 1:
         logger.setLevel(logging.DEBUG)
 
-    vpn = Vpn(debug=debug)
+    vpn = Vpn(verbosity=verbosity)
     if vpn.init_keys(p12, out):
         console.ok("VPN keys initialized successfully.")
     else:
@@ -445,13 +468,14 @@ def init_key_cmd(p12, out, debug):
 @click.option("--cert", default="~/.ssh/uva/user.crt", help="Path to user certificate.")
 @click.option("--key", default="~/.ssh/uva/user.key", help="Path to private key.")
 @click.option("--ca", default=None, help="Path to CA certificate (optional).")
-@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
-def validate_key_cmd(cert, key, ca, debug):
+@click.option("-v", "verbosity", count=True, default=0, help="Debug mode (-v, -vv).")
+def validate_key_cmd(cert, key, ca, verbosity):
     """Verify that VPN certificates and keys are valid and match."""
-    if debug:
+    verbosity = _get_verbosity(verbosity)
+    if verbosity >= 1:
         logger.setLevel(logging.DEBUG)
 
-    vpn = Vpn(debug=debug)
+    vpn = Vpn(verbosity=verbosity)
     console.msg(f"Validating keys:\n  Cert: {cert}\n  Key:  {key}\n  CA:   {ca}")
     
     results = vpn.validate_keys(cert, key, ca)
@@ -502,8 +526,8 @@ def validate_key_cmd(cert, key, ca, debug):
 @click.argument("action", type=click.Choice(["add", "remove", "list"]))
 @click.option("--name", default=None, help="Profile name.")
 @click.option("--service", default=None, help="VPN service for the profile.")
-@click.option("-v", "debug", is_flag=True, default=False, help="Debug mode.")
-def profile_cmd(action, name, service, debug):
+@click.option("-v", "verbosity", count=True, default=0, help="Debug mode (-v, -vv).")
+def profile_cmd(action, name, service, verbosity):
     """
     Manages user-specific connection profiles.
 
@@ -512,7 +536,8 @@ def profile_cmd(action, name, service, debug):
       remove removes a profile
       list   lists all profiles
     """
-    if debug:
+    verbosity = _get_verbosity(verbosity)
+    if verbosity >= 1:
         logger.setLevel(logging.DEBUG)
 
     if action == "list":

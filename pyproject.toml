@@ -7,6 +7,7 @@ name = "cloudmesh-ai-vpn"
 
 dynamic = ["version"]
 description = "Tools to manage VPN connections, profiles, and keys for UVA Anywhere VPN and other compatible providers."
+requires-python = ">=3.12"
 readme = "README.md"
 license = "Apache-2.0"
 classifiers = [

@@ -73,7 +73,8 @@ class MacVpnStrategy(VpnOSStrategy):
                 slice_target = " ".join(ip_range)
             else:
                 slice_target = ip_range if ip_range else host
-            script_arg = f"{vs_exe} -v {slice_target}"
+            slice_v = "-v " if self.vpn_context.verbosity >= 1 else ""
+            script_arg = f"{vs_exe} {slice_v}{slice_target}"
 
         # Determine User
         user_val = creds.get('user')
@@ -91,7 +92,10 @@ class MacVpnStrategy(VpnOSStrategy):
         org_config = organizations.get(vpn_name, {})
         auth_method = org_config.get("auth", "cert")
         
-        cmd_list = ["sudo", oc_exe, "--protocol=anyconnect", "-u", user]
+        cmd_list = ["sudo", oc_exe, "--protocol=anyconnect"]
+        if self.vpn_context.verbosity == 0:
+            cmd_list.append("-q")
+        cmd_list.extend(["-u", user])
         
         if auth_method == "cert":
             # Use cert from YAML or default path
@@ -115,16 +119,43 @@ class MacVpnStrategy(VpnOSStrategy):
         
         cmd_list.append(host)
         
+        if self.vpn.verbosity >= 1:
+            console.info(f"Connecting via OpenConnect: {' '.join(cmd_list)}")
+
         if progress_callback:
             progress_callback("Launching OpenConnect...")
         try:
+            # Adjust output based on verbosity:
+            # 0: Hidden
+            # 1: Raw (shown to console)
+            # 2+: Prefixed/Captured
+            verbosity = self.vpn.verbosity
+            if verbosity == 0:
+                stdout_val = subprocess.DEVNULL
+                stderr_val = subprocess.DEVNULL
+            elif verbosity == 1:
+                stdout_val = None
+                stderr_val = None
+            else: # verbosity >= 2
+                stdout_val = subprocess.PIPE
+                stderr_val = subprocess.PIPE
+
             proc = subprocess.Popen(
                 cmd_list,
                 stdin=subprocess.PIPE,
-                stdout=None,
-                stderr=None,
+                stdout=stdout_val,
+                stderr=stderr_val,
                 text=True
             )
+
+            if verbosity >= 2:
+                import threading
+                def stream_output(pipe, prefix):
+                    for line in iter(pipe.readline, ""):
+                        console.print(f"{prefix} {line.strip()}")
+                
+                threading.Thread(target=stream_output, args=(proc.stdout, "[OpenConnect-Out]"), daemon=True).start()
+                threading.Thread(target=stream_output, args=(proc.stderr, "[OpenConnect-Err]"), daemon=True).start()
             
             # Move the process to its own process group for persistence
             try:
@@ -211,7 +242,8 @@ class MacVpnStrategy(VpnOSStrategy):
                     )
 
     def disconnect(self) -> None:
-        console.info("Disconnecting OpenConnect...")
+        if self.vpn.verbosity >= 1:
+            console.info("Disconnecting OpenConnect...")
         if self._pid:
             try:
                 os.kill(self._pid, 2) # SIGINT
@@ -224,13 +256,15 @@ class MacVpnStrategy(VpnOSStrategy):
                 console.error(f"Error during targeted disconnect: {e}")
         else:
             from cloudmesh.ai.common.Shell import Shell
-            Shell.run("sudo pkill -SIGINT openconnect")
-        
+            redirect = " &> /dev/null" if self.vpn_context.verbosity == 0 else ""
+            Shell.run(f"sudo pkill -SIGINT openconnect{redirect}")
+
         from cloudmesh.ai.common.Shell import Shell
         try:
-            Shell.run("sudo pkill vpn-slice")
+            redirect = " &> /dev/null" if self.vpn_context.verbosity == 0 else ""
+            Shell.run(f"sudo pkill vpn-slice{redirect}")
         except Exception:
-            pass
+            pass # Ignore if vpn-slice is already gone
 
     def get_reset_commands(self, service: Optional[str] = None) -> List[str]:
         commands = []

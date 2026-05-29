@@ -95,7 +95,8 @@ class WindowsVpnStrategy(VpnOSStrategy):
             f"Where-Object {{ {conditions} }} | "
             f'Remove-DnsClientNrptRule -Force"'
         )
-        console.info(f"Removing NRPT rules for domains: {domains}")
+        if self.vpn.verbosity >= 1:
+            console.info(f"Removing NRPT rules for domains: {domains}")
         subprocess.run(ps_command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def is_enabled(self) -> bool:
@@ -167,6 +168,8 @@ class WindowsVpnStrategy(VpnOSStrategy):
         auth_method = org_config.get("auth", "cert")
         
         cmd_list = [oc_exe, org_config.get("host"), f'--user={user}']
+        if self.vpn.verbosity == 0:
+            cmd_list.append("-q")
         
         if auth_method == "cert":
             # Use cert from YAML or default path
@@ -197,14 +200,43 @@ class WindowsVpnStrategy(VpnOSStrategy):
         
         if progress_callback:
             progress_callback("Launching OpenConnect...")
+        if self.vpn.verbosity >= 1:
+            console.info(f"Connecting via OpenConnect: {' '.join(cmd_list)}")
+
         try:
+            # Adjust output based on verbosity:
+            # 0: Hidden
+            # 1: Raw (shown to console)
+            # 2+: Prefixed/Captured
+            verbosity = self.vpn.verbosity
+            if verbosity == 0:
+                stdout_val = subprocess.DEVNULL
+                stderr_val = subprocess.DEVNULL
+            elif verbosity == 1:
+                stdout_val = None
+                stderr_val = None
+            else: # verbosity >= 2
+                stdout_val = subprocess.PIPE
+                stderr_val = subprocess.PIPE
+
             proc = subprocess.Popen(
                 cmd_list, 
                 stdin=subprocess.PIPE, 
+                stdout=stdout_val,
+                stderr=stderr_val,
                 start_new_session=True, 
                 env=env_vars,
                 text=True
             )
+
+            if verbosity >= 2:
+                import threading
+                def stream_output(pipe, prefix):
+                    for line in iter(pipe.readline, ""):
+                        console.print(f"{prefix} {line.strip()}")
+                
+                threading.Thread(target=stream_output, args=(proc.stdout, "[OpenConnect-Out]"), daemon=True).start()
+                threading.Thread(target=stream_output, args=(proc.stderr, "[OpenConnect-Err]"), daemon=True).start()
             
             if auth_method != "cert":
                 pw = creds.get("pw")
@@ -267,7 +299,8 @@ class WindowsVpnStrategy(VpnOSStrategy):
                 win_install()
 
     def disconnect(self) -> None:
-        console.info("Disconnecting OpenConnect...")
+        if self.vpn.verbosity >= 1:
+            console.info("Disconnecting OpenConnect...")
         if self._pid:
             try:
                 p = psutil.Process(self._pid)

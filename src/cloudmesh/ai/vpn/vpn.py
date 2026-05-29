@@ -37,12 +37,29 @@ class Vpn:
         self,
         service: Optional[str] = None,
         timeout: Optional[int] = None,
-        debug: bool = False,
+        verbosity: int = 0,
         provider: Optional[str] = None,
         profile_name: Optional[str] = None,
     ) -> None:
         self.timeout = timeout or 60
-        self.debug = debug
+        
+        # Determine verbosity: explicitly passed > global flags (-v, -vv) > default (0)
+        if verbosity == 0:
+            # Simple check for global v flags in sys.argv
+            v_count = 0
+            for arg in sys.argv:
+                if arg in ["-v", "--verbose"]:
+                    v_count += 1
+                elif arg == "-vv":
+                    v_count += 2
+                elif arg.startswith("-") and not arg.startswith("--"):
+                    # Handle clustered flags like -xv
+                    v_count += arg.count("v")
+            self.verbosity = v_count
+        else:
+            self.verbosity = verbosity
+
+        self.debug = self.verbosity >= 1
         self.profile_name = profile_name
 
         # Use VpnConfig for flexible configuration loading and merging
@@ -55,12 +72,16 @@ class Vpn:
         strategy_class = get_vpn_strategy_class(provider)
         self.strategy = strategy_class(self)
 
-        if os_is_mac():
+        if os_is_mac() and self.verbosity >= 1:
             console.msg(f"Selected VPN Strategy: {self.strategy.__class__.__name__}")
 
     def _debug(self, msg: str) -> None:
-        if self.debug:
+        if self.verbosity >= 1:
             logger.debug(msg)
+
+    def _trace(self, msg: str) -> None:
+        if self.verbosity >= 2:
+            logger.debug(f"[TRACE] {msg}")
 
     def is_user_auth(self, org: str) -> bool:
         # Use a temporary config for the requested org to check auth
@@ -98,9 +119,11 @@ class Vpn:
             elif after_org:
                 console.ok(f"Connected to {after_org}")
             else:
-                console.warning(
-                    "Connection command succeeded, but could not verify organization via IP."
-                )
+                console.ok("VPN connection established")
+                if self.verbosity >= 1:
+                    console.warning(
+                        "Could not verify organization via IP."
+                    )
 
         return result
 
@@ -114,7 +137,15 @@ class Vpn:
 
         self.strategy.disconnect()
 
-        if self.enabled():
+        # Wait a few seconds for the VPN to fully deactivate
+        deactivated = False
+        for _ in range(5):
+            if not self.enabled():
+                deactivated = True
+                break
+            time.sleep(1)
+
+        if not deactivated:
             console.error("VPN is still enabled. Disconnection may have failed.")
         else:
             if before_org:

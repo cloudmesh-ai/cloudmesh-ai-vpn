@@ -92,7 +92,8 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
         
         # Use standard sudo since password is now cached via sudo -v
         command = f"sudo {oc_exe} --protocol=anyconnect -u {user} -c {path_expand(cert_path)} {script_arg} {host}"
-        console.info(f"Connecting via OpenConnect (Decrypted): {command}")
+        if self.vpn.verbosity >= 1:
+            console.info(f"Connecting via OpenConnect (Decrypted): {command}")
         
         # To make the VPN persist in the background, we use subprocess.Popen with start_new_session=True.
         # Since we might need to provide a password, we use --passwd-on-stdin.
@@ -106,7 +107,10 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
             progress_callback("Launching OpenConnect (Decrypted)...")
         try:
             # Construct the command as a list to avoid shell=True and TTY issues with sudo.
-            cmd_list = ["sudo", oc_exe, "--protocol=anyconnect", "-u", user, "-c", path_expand(cert_path)]
+            cmd_list = ["sudo", oc_exe, "--protocol=anyconnect"]
+            if self.vpn.verbosity == 0:
+                cmd_list.append("-q")
+            cmd_list.extend(["-u", user, "-c", path_expand(cert_path)])
             if script_arg:
                 # script_arg is like "--script='...'"
                 # We need to split it into two elements: "--script" and the actual script
@@ -120,7 +124,8 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
                 else:
                     slice_target = ip_range if ip_range else host
                 
-                cmd_list.extend(["--script", f"{vs_exe_path} -v {slice_target}"])
+                slice_v = "-v " if self.vpn.verbosity >= 1 else ""
+                cmd_list.extend(["--script", f"{vs_exe_path} {slice_v}{slice_target}"])
             
             cmd_list.append(host)
             
@@ -128,13 +133,37 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
                 cmd_list.append("--passwd-on-stdin")
             
             # Use subprocess.Popen without start_new_session=True to maintain TTY association for sudo.
+            # Adjust output based on verbosity:
+            # 0: Hidden
+            # 1: Raw (shown to console)
+            # 2+: Prefixed/Captured
+            verbosity = self.vpn.verbosity
+            if verbosity == 0:
+                stdout_val = subprocess.DEVNULL
+                stderr_val = subprocess.DEVNULL
+            elif verbosity == 1:
+                stdout_val = None
+                stderr_val = None
+            else: # verbosity >= 2
+                stdout_val = subprocess.PIPE
+                stderr_val = subprocess.PIPE
+
             proc = subprocess.Popen(
                 cmd_list,
                 stdin=subprocess.PIPE,
-                stdout=None, # Inherit stdout
-                stderr=None, # Inherit stderr
+                stdout=stdout_val,
+                stderr=stderr_val,
                 text=True
             )
+
+            if verbosity >= 2:
+                import threading
+                def stream_output(pipe, prefix):
+                    for line in iter(pipe.readline, ""):
+                        console.print(f"{prefix} {line.strip()}")
+                
+                threading.Thread(target=stream_output, args=(proc.stdout, "[OpenConnect-Out]"), daemon=True).start()
+                threading.Thread(target=stream_output, args=(proc.stderr, "[OpenConnect-Err]"), daemon=True).start()
             
             # Move the process to its own process group so it doesn't receive SIGHUP when the parent exits.
             try:
@@ -240,11 +269,13 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
         return evidence
 
     def disconnect(self) -> None:
-        console.info("Disconnecting OpenConnect...")
+        if self.vpn.verbosity >= 1:
+            console.info("Disconnecting OpenConnect...")
         if self._pid:
             try:
-                console.info(f"Sending SIGINT to OpenConnect process {self._pid}")
-                os.kill(self._pid, 2) # SIGINT
+                if self.vpn.verbosity >= 1:
+                    console.info(f"Sending SIGINT to OpenConnect process {self._pid}")
+                os.kill(self._pid, 2)  # SIGINT
                 time.sleep(2)
                 if psutil.pid_exists(self._pid):
                     console.warning(f"Process {self._pid} still exists, forcing termination")
@@ -255,11 +286,13 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
                 console.error(f"Error during targeted disconnect: {e}")
         else:
             from cloudmesh.ai.common.Shell import Shell
-            Shell.run("sudo pkill -SIGINT openconnect")
+            redirect = " &> /dev/null" if self.vpn.verbosity == 0 else ""
+            Shell.run(f"sudo pkill -SIGINT openconnect{redirect}")
         
         from cloudmesh.ai.common.Shell import Shell
         try:
-            Shell.run("sudo pkill vpn-slice")
+            redirect = " &> /dev/null" if self.vpn.verbosity == 0 else ""
+            Shell.run(f"sudo pkill vpn-slice{redirect}")
         except Exception:
             pass # Ignore if vpn-slice is already gone
 

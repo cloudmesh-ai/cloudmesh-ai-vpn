@@ -82,7 +82,8 @@ class LinuxVpnStrategy(VpnOSStrategy):
         auth_method = org_config.get("auth", "cert")
         
         # Add -b for background and -v for verbose as per README-tech
-        cmd_list = ["sudo", oc_exe, "-b", "-v", "--protocol=anyconnect", "-u", user]
+        oc_v = ["-v"] if self.vpn.verbosity >= 1 else ["-q"]
+        cmd_list = ["sudo", oc_exe, "-b"] + oc_v + ["--protocol=anyconnect", "-u", user]
         
         # Docker MTU Fix
         is_docker = os.path.exists("/.dockerenv") or (os.path.isfile("/proc/self/cgroup") and "docker" in open("/proc/self/cgroup").read())
@@ -127,21 +128,45 @@ class LinuxVpnStrategy(VpnOSStrategy):
         
         # Log the exact command for debugging
         cmd_str = ' '.join(cmd_list)
-        logger.debug(f"[VPN] Executing command: {cmd_str}")
+        if self.vpn.verbosity >= 1:
+            console.info(f"Connecting via OpenConnect: {cmd_str}")
         
         if progress_callback:
             progress_callback("Launching OpenConnect process...")
         try:
-            # Use DEVNULL for stdout/stderr because -b (background) mode 
-            # will hang if the pipe buffers fill up and we aren't reading them.
+            # Adjust output based on verbosity:
+            # 0: Hidden
+            # 1: Raw (shown to console)
+            # 2+: Prefixed/Captured
+            # Note: -b mode might conflict with captured output, but we try to be consistent.
+            verbosity = self.vpn.verbosity
+            if verbosity == 0:
+                stdout_val = subprocess.DEVNULL
+                stderr_val = subprocess.DEVNULL
+            elif verbosity == 1:
+                stdout_val = None
+                stderr_val = None
+            else: # verbosity >= 2
+                stdout_val = subprocess.PIPE
+                stderr_val = subprocess.PIPE
+
             proc = subprocess.Popen(
                 cmd_list,
                 stdin=subprocess.PIPE,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=stdout_val,
+                stderr=stderr_val,
                 text=True,
                 bufsize=1 # Line buffered
             )
+
+            if verbosity >= 2:
+                import threading
+                def stream_output(pipe, prefix):
+                    for line in iter(pipe.readline, ""):
+                        console.print(f"{prefix} {line.strip()}")
+                
+                threading.Thread(target=stream_output, args=(proc.stdout, "[OpenConnect-Out]"), daemon=True).start()
+                threading.Thread(target=stream_output, args=(proc.stderr, "[OpenConnect-Err]"), daemon=True).start()
             
             # Move the process to its own process group for persistence (as per README-tech)
             try:
@@ -152,19 +177,22 @@ class LinuxVpnStrategy(VpnOSStrategy):
             if auth_method != "cert":
                 pw = creds.get("pw")
                 if pw:
-                    console.info("Sending password to stdin...")
+                    if self.vpn.verbosity >= 1:
+                        console.info("Sending password to stdin...")
                     try:
                         # Some versions of openconnect/sudo need a small delay before password
                         time.sleep(1)
                         proc.stdin.write(pw + "\n")
                         proc.stdin.flush()
-                        console.info("Password sent successfully.")
+                        if self.vpn.verbosity >= 1:
+                            console.info("Password sent successfully.")
                     except Exception as e:
                         console.error(f"Failed to write password to stdin: {e}")
                         logger.debug(f"Failed to write password to stdin: {e}")
 
             # Give it a moment to start and potentially fail
-            console.info("Waiting 5 seconds for process to initialize...")
+            if self.vpn.verbosity >= 1:
+                console.info("Waiting 5 seconds for process to initialize...")
             time.sleep(5)
             
             # Check if the process died immediately with an error
@@ -172,14 +200,16 @@ class LinuxVpnStrategy(VpnOSStrategy):
                 console.error(f"OpenConnect failed to start immediately with exit code {proc.returncode}.")
                 return False
 
-            console.info("Verifying connection process...")
+            if self.vpn.verbosity >= 1:
+                console.info("Verifying connection process...")
             # Verify if OpenConnect is running. Since -b detaches the process,
             # we check for any running openconnect process.
             try:
                 for p in psutil.process_iter(["pid", "name"]):
                     if p.info["name"] and "openconnect" in p.info["name"].lower():
                         self._pid = p.info["pid"]
-                        console.info(f"Successfully tracked OpenConnect PID: {self._pid}")
+                        if self.vpn.verbosity >= 1:
+                            console.info(f"Successfully tracked OpenConnect PID: {self._pid}")
                         return True
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
@@ -187,7 +217,8 @@ class LinuxVpnStrategy(VpnOSStrategy):
             # Fallback: check if the sudo process is still running
             if proc.poll() is None:
                 self._pid = proc.pid
-                console.info(f"Tracking sudo PID: {self._pid}")
+                if self.vpn.verbosity >= 1:
+                    console.info(f"Tracking sudo PID: {self._pid}")
                 return True
                 
             console.error("OpenConnect process not found after starting.")
@@ -268,27 +299,32 @@ class LinuxVpnStrategy(VpnOSStrategy):
             )
 
     def disconnect(self) -> None:
-        console.info("Disconnecting OpenConnect...")
+        if self.vpn.verbosity >= 1:
+            console.info("Disconnecting OpenConnect...")
         from cloudmesh.ai.common.Shell import Shell
         
         # 1. Try graceful shutdown
         try:
-            Shell.run("sudo pkill -SIGINT openconnect")
+            redirect = " &> /dev/null" if self.vpn.verbosity == 0 else ""
+            Shell.run(f"sudo pkill -SIGINT openconnect{redirect}")
         except Exception:
             pass
         try:
-            Shell.run("sudo pkill -SIGINT vpn-slice")
+            redirect = " &> /dev/null" if self.vpn.verbosity == 0 else ""
+            Shell.run(f"sudo pkill -SIGINT vpn-slice{redirect}")
         except Exception:
             pass
         time.sleep(2)
         
         # 2. Force kill any remaining processes to prevent PID accumulation
         try:
-            Shell.run("sudo pkill -9 openconnect")
+            redirect = " &> /dev/null" if self.vpn.verbosity == 0 else ""
+            Shell.run(f"sudo pkill -9 openconnect{redirect}")
         except Exception:
             pass
         try:
-            Shell.run("sudo pkill -9 vpn-slice")
+            redirect = " &> /dev/null" if self.vpn.verbosity == 0 else ""
+            Shell.run(f"sudo pkill -9 vpn-slice{redirect}")
         except Exception:
             pass
         

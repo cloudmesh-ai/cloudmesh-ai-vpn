@@ -191,5 +191,6 @@ class MacCiscoStrategy(VpnOSStrategy):
     def disconnect(self) -> None:
         self._manage_routes("remove")
         if self.anyconnect:
-            Shell.run(f'{self.anyconnect} disconnect "{self.vpn.service}"')
+            redirect = " &> /dev/null" if self.vpn.verbosity == 0 else ""
+            Shell.run(f'{self.anyconnect} disconnect "{self.vpn.service}"{redirect}')
         Shell.run("pkill -SIGINT openconnect &> /dev/null || true")

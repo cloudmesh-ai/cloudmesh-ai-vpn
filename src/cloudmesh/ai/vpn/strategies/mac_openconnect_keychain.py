@@ -116,7 +116,8 @@ class MacOpenConnectKeychainStrategy(VpnOSStrategy):
 
         keychain_service = creds.get("keychain_service", "uva-key-pass")
         try:
-            console.msg(f"Searching Keychain for service: {keychain_service}...")
+            if self.vpn.verbosity >= 1:
+                console.msg(f"Searching Keychain for service: {keychain_service}...")
             # Added -a uva to match the required account field for add-generic-password
             passphrase = subprocess.check_output(
                 [
@@ -136,12 +137,13 @@ class MacOpenConnectKeychainStrategy(VpnOSStrategy):
             # e.output is already a string because text=True was used in check_output
             output = e.output.strip() if e.output else "No output"
             console.error(f"Shell output: {output}")
-            console.msg(
-                f"To add it securely (you will be prompted for the password), run:"
-            )
-            console.msg(
-                f"  security add-generic-password -a uva -s {keychain_service}"
-            )
+            if self.vpn.verbosity >= 1:
+                console.msg(
+                    f"To add it securely (you will be prompted for the password), run:"
+                )
+                console.msg(
+                    f"  security add-generic-password -a uva -s {keychain_service}"
+                )
             return False
 
         if progress_callback:
@@ -149,7 +151,8 @@ class MacOpenConnectKeychainStrategy(VpnOSStrategy):
         # Use standard sudo since password is now cached via sudo -v
         # We remove the invalid --passphrase-from-fsid flag.
         command = f"sudo {oc_exe} --protocol=anyconnect -u {user} -c {path_expand(cert_path)} -k {path_expand(key_path)} {script_arg} {host}"
-        console.msg(f"Connecting via OpenConnect (Keychain): {command}")
+        if self.vpn.verbosity >= 1:
+            console.msg(f"Connecting via OpenConnect (Keychain): {command}")
 
         try:
             # Construct the command as a list to avoid shell=True and TTY issues with sudo.
@@ -157,13 +160,17 @@ class MacOpenConnectKeychainStrategy(VpnOSStrategy):
                 "sudo",
                 oc_exe,
                 "--protocol=anyconnect",
+            ]
+            if self.vpn.verbosity == 0:
+                cmd_list.append("-q")
+            cmd_list.extend([
                 "-u",
                 user,
                 "-c",
                 path_expand(cert_path),
                 "-k",
                 path_expand(key_path),
-            ]
+            ])
             if script_arg:
                 vs_exe_path = self.vpn_slice
                 org_config = organizations.get(vpn_name, {})
@@ -172,18 +179,43 @@ class MacOpenConnectKeychainStrategy(VpnOSStrategy):
                     slice_target = " ".join(ip_range)
                 else:
                     slice_target = ip_range if ip_range else host
-                cmd_list.extend(["--script", f"{vs_exe_path} -v {slice_target}"])
+                slice_v = "-v " if self.vpn.verbosity >= 1 else ""
+                cmd_list.extend(["--script", f"{vs_exe_path} {slice_v}{slice_target}"])
 
             cmd_list.append(host)
 
             # Use subprocess.Popen with stdin=PIPE to provide the passphrase.
+            # Adjust output based on verbosity:
+            # 0: Hidden
+            # 1: Raw (shown to console)
+            # 2+: Prefixed/Captured
+            verbosity = self.vpn.verbosity
+            if verbosity == 0:
+                stdout_val = subprocess.DEVNULL
+                stderr_val = subprocess.DEVNULL
+            elif verbosity == 1:
+                stdout_val = None
+                stderr_val = None
+            else: # verbosity >= 2
+                stdout_val = subprocess.PIPE
+                stderr_val = subprocess.PIPE
+
             proc = subprocess.Popen(
                 cmd_list,
                 stdin=subprocess.PIPE,
-                stdout=None,  # Inherit stdout
-                stderr=None,  # Inherit stderr
-                text=True,
+                stdout=stdout_val,
+                stderr=stderr_val,
+                text=True
             )
+
+            if verbosity >= 2:
+                import threading
+                def stream_output(pipe, prefix):
+                    for line in iter(pipe.readline, ""):
+                        console.print(f"{prefix} {line.strip()}")
+                
+                threading.Thread(target=stream_output, args=(proc.stdout, "[OpenConnect-Out]"), daemon=True).start()
+                threading.Thread(target=stream_output, args=(proc.stderr, "[OpenConnect-Err]"), daemon=True).start()
 
             # Move the process to its own process group so it doesn't receive SIGHUP when the parent exits.
             try:
@@ -291,10 +323,12 @@ class MacOpenConnectKeychainStrategy(VpnOSStrategy):
         return evidence
 
     def disconnect(self) -> None:
-        console.msg("Disconnecting OpenConnect...")
+        if self.vpn.verbosity >= 1:
+            console.msg("Disconnecting OpenConnect...")
         if self._pid:
             try:
-                console.msg(f"Sending SIGINT to OpenConnect process {self._pid}")
+                if self.vpn.verbosity >= 1:
+                    console.msg(f"Sending SIGINT to OpenConnect process {self._pid}")
                 os.kill(self._pid, 2)  # SIGINT
                 time.sleep(2)
                 if psutil.pid_exists(self._pid):
@@ -308,13 +342,14 @@ class MacOpenConnectKeychainStrategy(VpnOSStrategy):
                 console.error(f"Error during targeted disconnect: {e}")
         else:
             from cloudmesh.ai.common.Shell import Shell
-
-            Shell.run("sudo pkill -SIGINT openconnect")
+            redirect = " &> /dev/null" if self.vpn.verbosity == 0 else ""
+            Shell.run(f"sudo pkill -SIGINT openconnect{redirect}")
 
         from cloudmesh.ai.common.Shell import Shell
 
         try:
-            Shell.run("sudo pkill vpn-slice")
+            redirect = " &> /dev/null" if self.vpn.verbosity == 0 else ""
+            Shell.run(f"sudo pkill vpn-slice{redirect}")
         except Exception:
             pass  # Ignore if vpn-slice is already gone
 

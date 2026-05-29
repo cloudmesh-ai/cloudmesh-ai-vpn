@@ -219,3 +219,4 @@ __marimo__/
 .release_state.json
 release_*.log
 .DS_Store
+.clinedoc

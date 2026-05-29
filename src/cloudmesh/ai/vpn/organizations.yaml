@@ -9,7 +9,7 @@ cloudmesh:
       group: false
       ip:
         - 128.227.0.0/16
-        - 159.178.0.0/16
+        # - 159.178.0.0/16
       domain: cise.ufl.edu
       connection_check:
         - University of Florida
@@ -26,12 +26,11 @@ cloudmesh:
       cert:
         - ~/.ssh/uva/user.pem
       ip: 
-        - rivanna.hpc.virginia.edu 
         - 128.143.0.0/16 
-        - 137.54.0.0/16
-        - 199.111.0.0/16
-        - 199.111.160.0/19
-        - 199.111.192.0/18
+        # - 137.54.0.0/16
+        # - 199.111.0.0/16
+        # - 199.111.160.0/19
+        # - 199.111.192.0/18
       domain: virginia.edu
       connection_check:
         - University of Virginia
