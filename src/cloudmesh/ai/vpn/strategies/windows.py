@@ -25,6 +25,31 @@ def _normalize_cert_path(value: Any) -> Optional[str]:
     return None
 
 
+def _extract_cert_uri(system_keys_output: str, match_terms: List[str]) -> Optional[str]:
+    lines = system_keys_output.splitlines()
+    normalized_terms = [term.lower() for term in match_terms if isinstance(term, str) and term.strip()]
+
+    if not normalized_terms:
+        return None
+
+    current_cert_uri = None
+    for line in lines:
+        stripped_line = line.strip()
+        if stripped_line.startswith("Cert URI: "):
+            current_cert_uri = stripped_line.split("Cert URI: ", 1)[1].strip() or None
+            continue
+        if stripped_line.startswith("Object Label:"):
+            continue
+
+        line_lower = line.lower()
+        if not any(term in line_lower for term in normalized_terms):
+            continue
+        if current_cert_uri:
+            return current_cert_uri
+
+    return None
+
+
 def _cidr_to_route_parts(cidr: str) -> Optional[tuple[str, str, str]]:
     if "/" not in cidr:
         return None
@@ -173,7 +198,33 @@ class WindowsVpnStrategy(VpnOSStrategy):
 
         return proc.poll() is None
 
+    def _get_system_cert_uri(self, org_config: Dict[str, Any]) -> Optional[str]:
+        if not os_is_windows():
+            return None
+
+        try:
+            from cloudmesh.ai.common.Shell import Shell
+            system_keys = Shell.run("list-system-keys")
+        except Exception:
+            return None
+
+        match_terms = []
+        connection_check = org_config.get("connection_check")
+        if isinstance(connection_check, list):
+            match_terms.extend(item for item in connection_check if isinstance(item, str))
+
+        org_name = org_config.get("name")
+        if isinstance(org_name, str):
+            match_terms.append(org_name)
+
+        domain = org_config.get("domain")
+        if isinstance(domain, str):
+            match_terms.append(domain)
+
+        return _extract_cert_uri(system_keys, match_terms)
+
     def connect(self, creds: Dict[str, Any], vpn_name: str, no_split: bool, progress_callback: Optional[callable] = None) -> Union[bool, str, None]:
+        self._pid = None
         if progress_callback:
             progress_callback("Checking administrator privileges...")
         import pyuac
@@ -244,18 +295,26 @@ class WindowsVpnStrategy(VpnOSStrategy):
             cmd_list.append("-q")
         
         if auth_method == "cert":
-            # Use cert from YAML or default path
-            cert_path = _normalize_cert_path(org_config.get("cert")) or _normalize_cert_path(
-                creds.get("cert_path")
-            )
-            if not cert_path:
-                cert_path = "~/.ssh/uva/decrypted_user.pem"
-            
-            if not os.path.exists(path_expand(cert_path)):
-                console.error(f"Certificate file not found at {cert_path}")
-                return False
-            
-            cmd_list.extend(["--certificate", path_expand(cert_path)])
+            cert_uri = self._get_system_cert_uri(org_config)
+            if cert_uri:
+                if self.vpn.verbosity >= 1:
+                    console.info("Using certificate from Windows system key store")
+                cmd_list.extend(["--certificate", cert_uri])
+            else:
+                # Fall back to file-based certificate handling.
+                cert_path = _normalize_cert_path(org_config.get("cert")) or _normalize_cert_path(
+                    creds.get("cert_path")
+                )
+                if not cert_path:
+                    cert_path = "~/.ssh/uva/decrypted_user.pem"
+
+                if not os.path.exists(path_expand(cert_path)):
+                    console.error(
+                        f"Certificate file not found at {cert_path}, and no matching Windows system certificate was found"
+                    )
+                    return False
+
+                cmd_list.extend(["--certificate", path_expand(cert_path)])
         else:
             # Password auth
             pw = creds.get("pw")
@@ -318,19 +377,19 @@ class WindowsVpnStrategy(VpnOSStrategy):
             
             time.sleep(2)
 
-            # Track the actual openconnect PID
-            for p in psutil.process_iter(['pid', 'name']):
-                if p.info['name'] == 'openconnect.exe':
-                    self._pid = p.info['pid']
-
-            if self._pid:
-                if not no_split:
-                    if not self._wait_for_split_tunnel_ready(proc, domain, routes):
-                        console.warning("OpenConnect started, but split DNS/routes were not fully ready before timeout.")
-                return True
-            else:
-                console.error("OpenConnect process not found after starting.")
+            if proc.poll() is not None:
+                console.error(f"OpenConnect exited during startup with exit code {proc.returncode}.")
                 return False
+
+            self._pid = proc.pid
+
+            if not no_split:
+                if not self._wait_for_split_tunnel_ready(proc, domain, routes):
+                    if proc.poll() is not None:
+                        console.error(f"OpenConnect exited before split DNS/routes were ready with exit code {proc.returncode}.")
+                        return False
+                    console.warning("OpenConnect started, but split DNS/routes were not fully ready before timeout.")
+            return True
                 
         except Exception as e:
             console.error(f"Connection failed: {e}")
