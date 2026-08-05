@@ -14,6 +14,27 @@ cloudmesh:
       connection_check:
         - University of Florida
         - UFL
+    uva2:
+      username: thf2bn
+      auth: cert
+      name: UVA Anywhere
+      host: uva-anywhere-1.itc.virginia.edu
+      user: false
+      2fa: true
+      group: false
+      keychain: true
+      cert:
+        - ~/.ssh/uva/user.pem
+      ip: 
+        - 128.143.0.0/16 
+        # - 137.54.0.0/16
+        # - 199.111.0.0/16
+        # - 199.111.160.0/19
+        # - 199.111.192.0/18
+      domain: virginia.edu
+      connection_check:
+        - University of Virginia
+        - UVA
     uva:
       username: thf2bn
       auth: cert

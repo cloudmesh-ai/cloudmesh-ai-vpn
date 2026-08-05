@@ -4,6 +4,7 @@ import time
 import sys
 import psutil
 import pty
+import fcntl
 from typing import Any, Dict, List, Union, Optional
 
 from cloudmesh.ai.common.io import console
@@ -47,6 +48,14 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
     def connect(self, creds: Dict[str, Any], vpn_name: str, no_split: bool, progress_callback: Optional[callable] = None) -> Union[bool, str, None]:
         if progress_callback:
             progress_callback("Checking dependencies...")
+        
+        # Pre-flight check: TUN device / Sudo privileges
+        try:
+            # Check if we can execute a basic sudo command to verify privileges
+            subprocess.check_output(["sudo", "-n", "true"], stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError:
+            console.warning("Sudo password might be required. Please ensure you have run 'sudo -v' or are prepared to enter your password.")
+
         oc_exe = self.openconnect
         if not oc_exe:
             console.error("OpenConnect binary not found. Please install it via Homebrew: brew install openconnect")
@@ -110,6 +119,13 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
             cmd_list = ["sudo", oc_exe, "--protocol=anyconnect"]
             if self.vpn.verbosity == 0:
                 cmd_list.append("-q")
+            
+            # Handle server certificate pinning from organization config
+            org_config = organizations.get(vpn_name, {})
+            server_cert = org_config.get("server_cert")
+            if server_cert:
+                cmd_list.extend(["--servercert", server_cert])
+                
             cmd_list.extend(["-u", user, "-c", path_expand(cert_path)])
             if script_arg:
                 # script_arg is like "--script='...'"
@@ -132,62 +148,87 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
             if pw:
                 cmd_list.append("--passwd-on-stdin")
             
-            # Use subprocess.Popen without start_new_session=True to maintain TTY association for sudo.
-            # Adjust output based on verbosity:
-            # 0: Hidden
-            # 1: Raw (shown to console)
-            # 2+: Prefixed/Captured
-            verbosity = self.vpn.verbosity
-            if verbosity == 0:
-                stdout_val = subprocess.DEVNULL
-                stderr_val = subprocess.DEVNULL
-            elif verbosity == 1:
-                stdout_val = None
-                stderr_val = None
-            else: # verbosity >= 2
-                stdout_val = subprocess.PIPE
-                stderr_val = subprocess.PIPE
-
+            # To prevent SIGPIPE crashes when the parent exits, we redirect output to a temporary file
+            # instead of using pipes. We then tail this file to monitor for success.
+            log_file_path = f"/tmp/openconnect_{int(time.time())}.log"
+            log_file = open(log_file_path, "w+")
+            
             proc = subprocess.Popen(
                 cmd_list,
                 stdin=subprocess.PIPE,
-                stdout=stdout_val,
-                stderr=stderr_val,
-                text=True
+                stdout=log_file,
+                stderr=subprocess.STDOUT, # Merge stderr into stdout for easier tailing
+                text=True,
+                bufsize=1
             )
 
-            if verbosity >= 2:
-                import threading
-                def stream_output(pipe, prefix):
-                    for line in iter(pipe.readline, ""):
-                        console.print(f"{prefix} {line.strip()}")
-                
-                threading.Thread(target=stream_output, args=(proc.stdout, "[OpenConnect-Out]"), daemon=True).start()
-                threading.Thread(target=stream_output, args=(proc.stderr, "[OpenConnect-Err]"), daemon=True).start()
-            
-            # Move the process to its own process group so it doesn't receive SIGHUP when the parent exits.
+            # Move the process to its own process group
             try:
                 os.setpgid(proc.pid, 0)
             except (ProcessLookupError, PermissionError):
-                pass # Ignore if we can't set pgid (e.g. due to sudo privilege change)
-            
+                pass
+
             if pw:
                 proc.stdin.write(pw + "\n")
                 proc.stdin.flush()
+
+            # Monitoring loop for success or failure
+            timeout = 30
+            start_time = time.time()
+            success_markers = ["Established DTLS connection", "Connected as", "CSTP connected"]
             
-            # Wait a bit to ensure the process has started.
-            time.sleep(2)
-            
-            # Find the PID of the actual openconnect process.
-            for p in psutil.process_iter(['pid', 'name']):
-                if p.info['name'] == 'openconnect':
-                    self._pid = p.info['pid']
-            
-            if self._pid:
-                return True
-            else:
-                console.error("OpenConnect process not found after starting.")
-                return False
+            last_pos = 0
+            while time.time() - start_time < timeout:
+                # Check if process exited
+                exit_code = proc.poll()
+                if exit_code is not None:
+                    log_file.seek(0)
+                    error_logs = log_file.read()
+                    console.error(f"OpenConnect exited prematurely with code {exit_code}")
+                    if error_logs:
+                        console.error(f"Logs: {error_logs.strip()}")
+                    log_file.close()
+                    if os.path.exists(log_file_path):
+                        os.remove(log_file_path)
+                    return False
+
+                # Tail the log file
+                log_file.seek(last_pos)
+                lines = log_file.readlines()
+                last_pos = log_file.tell()
+                
+                for line in lines:
+                    line = line.strip()
+                    if not line: continue
+                    
+                    if self.vpn.verbosity >= 1:
+                        console.print(f"[OpenConnect] {line}")
+                    
+                    if any(marker in line for marker in success_markers):
+                        self._pid = proc.pid
+                        log_file.close()
+                        # We keep the log file for a bit or remove it; usually safer to leave it 
+                        # or let the process keep it open. Since it's a temp file, we can remove it
+                        # but OpenConnect might still be writing to it.
+                        return True
+                    
+                    # Auto-accept server certificate if prompted
+                    if "Enter 'yes' to accept" in line:
+                        if self.vpn.verbosity >= 1:
+                            console.info("Auto-accepting server certificate...")
+                        try:
+                            proc.stdin.write("yes\n")
+                            proc.stdin.flush()
+                        except BrokenPipeError:
+                            pass
+                
+                time.sleep(0.1)
+
+            console.error(f"VPN connection timed out after {timeout} seconds.")
+            log_file.close()
+            if os.path.exists(log_file_path):
+                os.remove(log_file_path)
+            return False
                 
         except Exception as e:
             console.error(f"Connection failed: {e}")
@@ -222,7 +263,6 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
         # 2. openconnect status
         if openconnect_pids:
             evidence.append(f"[Process] 'openconnect' is running (PIDs: {', '.join(openconnect_pids)})")
-            # Only run expensive ps aux if openconnect is actually running
             try:
                 import re
                 out = subprocess.check_output(["ps", "aux"], text=True)
@@ -230,7 +270,6 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
                     if "vpn-slice" in line:
                         routes = re.findall(r"\d{1,3}(?:\.\d{1,3}){3}(?:/\d{1,2})?", line)
                         if routes:
-                            # Filter out the binary path
                             filtered_routes = [r for r in routes if r not in line.split("/bin/")[0]]
                             evidence.append(f"[OpenConnect] Routes configured via vpn-slice: {', '.join(filtered_routes)}")
                         else:
@@ -250,51 +289,98 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
         # 4. Routing table check
         current_org = self.get_current_org()
         org_name = current_org.lower() if current_org else self.vpn.service_key.lower()
-        ip_range = organizations.get(org_name, {}).get("ip")
+        org_config = organizations.get(org_name, {})
+        ip_range = org_config.get("ip")
         
         if ip_range:
             targets = ip_range if isinstance(ip_range, list) else [ip_range]
             try:
                 import re
-                # Call netstat once per watch cycle instead of once per target
                 route_out = subprocess.check_output(["netstat", "-rn"], text=True)
+                routes_found = 0
                 for target in targets:
                     search_ip = target.split("/")[0].strip()
                     if re.search(rf"^\s*{re.escape(search_ip)}(\s+|/)", route_out, re.MULTILINE):
-                        display_net = target if "/" in target else f"{target}/16"
-                        evidence.append(f"[Routing Table] Route to {display_net} found in system routing table (netstat -rn) (Org: {org_name})")
+                        routes_found += 1
+                
+                if routes_found > 0:
+                    evidence.append(f"[Routing Table] {routes_found}/{len(targets)} routes verified in system routing table (Org: {org_name})")
+                else:
+                    evidence.append(f"[Routing Table] No routes found for {org_name}")
             except Exception:
                 pass
 
+        # 5. DNS Verification
+        test_host = org_config.get("dns_test_host") or org_config.get("dns")
+        if test_host:
+            try:
+                import socket
+                socket.gethostbyname(test_host)
+                evidence.append(f"[DNS] Successfully resolved {test_host} (VPN DNS is working)")
+            except socket.gaierror:
+                evidence.append(f"[DNS] Failed to resolve {test_host} (VPN DNS might be broken)")
+            except Exception as e:
+                evidence.append(f"[DNS] DNS check failed: {e}")
+
         return evidence
+
+    def _get_active_network_service(self) -> Optional[str]:
+        """Maps the active interface to a networksetup service name."""
+        try:
+            # Get active interface from default route
+            route_out = subprocess.check_output(["route", "get", "default"], text=True)
+            for line in route_out.splitlines():
+                if line.startswith("interface:"):
+                    iface = line.split(":")[1].strip()
+                    break
+            else:
+                return None
+
+            # Map interface to service name using networksetup
+            services_out = subprocess.check_output(["networksetup", "-listnetworkserviceorder"], text=True)
+            current_service = None
+            for line in services_out.splitlines():
+                if current_service is None and line.startswith("("):
+                    current_service = line.strip("() ")
+                elif current_service and f"Device: {iface}" in line:
+                    return current_service
+                elif line.startswith("("):
+                    current_service = line.strip("() ")
+            return None
+        except Exception:
+            return None
 
     def disconnect(self) -> None:
         if self.vpn.verbosity >= 1:
             console.info("Disconnecting OpenConnect...")
+        
         if self._pid:
             try:
                 if self.vpn.verbosity >= 1:
-                    console.info(f"Sending SIGINT to OpenConnect process {self._pid}")
-                os.kill(self._pid, 2)  # SIGINT
-                time.sleep(2)
-                if psutil.pid_exists(self._pid):
-                    console.warning(f"Process {self._pid} still exists, forcing termination")
-                    os.kill(self._pid, 15) # SIGTERM
-            except ProcessLookupError:
-                pass
+                    console.info(f"Killing process group for PID {self._pid}")
+                # Kill the entire process group (PGID is the same as PID of the group leader)
+                os.killpg(os.getpgid(self._pid), 15) # SIGTERM
+            except (ProcessLookupError, PermissionError) as e:
+                if self.vpn.verbosity >= 1:
+                    console.warning(f"Could not kill process group: {e}")
+                # Fallback to individual PID
+                try:
+                    os.kill(self._pid, 15)
+                except:
+                    pass
             except Exception as e:
                 console.error(f"Error during targeted disconnect: {e}")
         else:
             from cloudmesh.ai.common.Shell import Shell
             redirect = " &> /dev/null" if self.vpn.verbosity == 0 else ""
-            Shell.run(f"sudo pkill -SIGINT openconnect{redirect}")
+            Shell.run(f"sudo pkill -SIGTERM openconnect{redirect}")
         
         from cloudmesh.ai.common.Shell import Shell
         try:
             redirect = " &> /dev/null" if self.vpn.verbosity == 0 else ""
-            Shell.run(f"sudo pkill vpn-slice{redirect}")
+            Shell.run(f"sudo pkill -SIGTERM vpn-slice{redirect}")
         except Exception:
-            pass # Ignore if vpn-slice is already gone
+            pass
 
     def get_reset_commands(self, service: Optional[str] = None) -> List[str]:
         commands = []
