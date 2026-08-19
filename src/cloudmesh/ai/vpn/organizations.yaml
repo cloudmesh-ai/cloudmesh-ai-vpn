@@ -7,6 +7,7 @@ cloudmesh:
       user: true
       2fa: false
       group: false
+      log_file: ~/.config/cloudmesh/vpn_ufl.log
       ip:
         - 128.227.0.0/16
         # - 159.178.0.0/16
@@ -19,6 +20,8 @@ cloudmesh:
       auth: cert
       name: UVA Anywhere
       host: uva-anywhere-1.itc.virginia.edu
+      server_cert: pin-sha256:scz7BQrdBL079kKAzH6XgA68hEqaL0As+7tinXsQgy8=
+      log_file: ~/.config/cloudmesh/vpn_uva2.log
       user: false
       2fa: true
       group: false
@@ -40,6 +43,8 @@ cloudmesh:
       auth: cert
       name: UVA Anywhere
       host: uva-anywhere-1.itc.virginia.edu
+      server_cert: pin-sha256:scz7BQrdBL079kKAzH6XgA68hEqaL0As+7tinXsQgy8=
+      log_file: ~/.config/cloudmesh/vpn_uva.log
       user: false
       2fa: false
       group: false
@@ -47,7 +52,7 @@ cloudmesh:
       cert:
         - ~/.ssh/uva/user.pem
       ip: 
-        - 128.143.0.0/16 
+        - 128.143.0.0/16 i
         # - 137.54.0.0/16
         # - 199.111.0.0/16
         # - 199.111.160.0/19
@@ -63,6 +68,7 @@ cloudmesh:
       user: true
       2fa: true
       group: false
+      log_file: ~/.config/cloudmesh/vpn_fiu.log
       ip:
         - 131.94.0.0/16
         - 131.94.68.0/22
@@ -82,6 +88,7 @@ cloudmesh:
       user: true
       2fa: true
       group: "NYU VPN: NYU-NET Traffic Only"
+      log_file: ~/.config/cloudmesh/vpn_nyu.log
       ip:
         - 128.122.0.0/16
         - 216.165.0.0/18
@@ -102,6 +109,7 @@ cloudmesh:
       user: true
       2fa: false
       group: true
+      log_file: ~/.config/cloudmesh/vpn_uci.log
       ip:
         - 128.200.0.0/16
         - 160.87.0.0/16
@@ -117,6 +125,7 @@ cloudmesh:
       user: true
       2fa: false
       group: false
+      log_file: ~/.config/cloudmesh/vpn_gmu.log
       ip:
         - 129.174.0.0/17
         - 129.174.128.0/17
@@ -130,6 +139,7 @@ cloudmesh:
       user: true
       2fa: false
       group: false
+      log_file: ~/.config/cloudmesh/vpn_olemiss.log
       connection_check:
         - University of Mississippi
         - Ole Miss
@@ -140,6 +150,7 @@ cloudmesh:
       user: true
       2fa: false
       group: true
+      log_file: ~/.config/cloudmesh/vpn_sc.log
       pw_concat: true
       ip:
         - 129.252.0.0/16
@@ -155,6 +166,7 @@ cloudmesh:
       user: true
       2fa: true
       group: false
+      log_file: ~/.config/cloudmesh/vpn_iu.log
       ip:
         - 149.160.0.0/14
         - 129.79.0.0/16

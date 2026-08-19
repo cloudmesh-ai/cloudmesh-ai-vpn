@@ -49,12 +49,9 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
         if progress_callback:
             progress_callback("Checking dependencies...")
         
-        # Pre-flight check: TUN device / Sudo privileges
-        try:
-            # Check if we can execute a basic sudo command to verify privileges
-            subprocess.check_output(["sudo", "-n", "true"], stderr=subprocess.DEVNULL)
-        except subprocess.CalledProcessError:
-            console.warning("Sudo password might be required. Please ensure you have run 'sudo -v' or are prepared to enter your password.")
+        # Pre-flight check: Sudo privileges
+        # We rely on vpn.warmup_sudo() called in the command layer to cache credentials.
+        # No further interactive checks are performed here to avoid blocking the background process.
 
         oc_exe = self.openconnect
         if not oc_exe:
@@ -100,7 +97,12 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
                 return False
         
         # Use standard sudo since password is now cached via sudo -v
-        command = f"sudo {oc_exe} --protocol=anyconnect -u {user} -c {path_expand(cert_path)} {script_arg} {host}"
+        # Include server certificate in the log string for visibility
+        org_config = organizations.get(vpn_name, {})
+        server_cert = org_config.get("server_cert")
+        cert_flag = f" --servercert {server_cert}" if server_cert else ""
+        
+        command = f"sudo {oc_exe} --protocol=anyconnect -u {user} -c {path_expand(cert_path)}{cert_flag} {script_arg} {host}"
         if self.vpn.verbosity >= 1:
             console.info(f"Connecting via OpenConnect (Decrypted): {command}")
         
@@ -117,8 +119,9 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
         try:
             # Construct the command as a list to avoid shell=True and TTY issues with sudo.
             cmd_list = ["sudo", oc_exe, "--protocol=anyconnect"]
-            if self.vpn.verbosity == 0:
-                cmd_list.append("-q")
+            
+            # We avoid adding '-q' (quiet mode) because it can suppress the success markers 
+            # we need to monitor in the log file to detect a successful connection.
             
             # Handle server certificate pinning from organization config
             org_config = organizations.get(vpn_name, {})
@@ -148,9 +151,11 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
             if pw:
                 cmd_list.append("--passwd-on-stdin")
             
-            # To prevent SIGPIPE crashes when the parent exits, we redirect output to a temporary file
+            # To prevent SIGPIPE crashes when the parent exits, we redirect output to a log file
             # instead of using pipes. We then tail this file to monitor for success.
-            log_file_path = f"/tmp/openconnect_{int(time.time())}.log"
+            org_config = organizations.get(vpn_name, {})
+            log_path = org_config.get("log_file", "~/.config/cloudmesh/vpn_openconnect.log")
+            log_file_path = os.path.expanduser(log_path)
             log_file = open(log_file_path, "w+")
             
             proc = subprocess.Popen(
@@ -173,9 +178,17 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
                 proc.stdin.flush()
 
             # Monitoring loop for success or failure
-            timeout = 30
+            # Increased timeout to 60s because some servers (like UVA) can be erratic 
+            # with initial handshakes (404s/302s) before succeeding.
+            timeout = 60
             start_time = time.time()
-            success_markers = ["Established DTLS connection", "Connected as", "CSTP connected"]
+            success_markers = [
+                "Established DTLS connection", 
+                "Connected as", 
+                "CSTP connected", 
+                "VPN connection established",
+                "HTTP/1.1 200 OK"
+            ]
             
             last_pos = 0
             while time.time() - start_time < timeout:
@@ -188,8 +201,6 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
                     if error_logs:
                         console.error(f"Logs: {error_logs.strip()}")
                     log_file.close()
-                    if os.path.exists(log_file_path):
-                        os.remove(log_file_path)
                     return False
 
                 # Tail the log file
@@ -207,27 +218,26 @@ class MacOpenConnectDecryptedStrategy(VpnOSStrategy):
                     if any(marker in line for marker in success_markers):
                         self._pid = proc.pid
                         log_file.close()
-                        # We keep the log file for a bit or remove it; usually safer to leave it 
-                        # or let the process keep it open. Since it's a temp file, we can remove it
-                        # but OpenConnect might still be writing to it.
                         return True
                     
-                    # Auto-accept server certificate if prompted
-                    if "Enter 'yes' to accept" in line:
-                        if self.vpn.verbosity >= 1:
-                            console.info("Auto-accepting server certificate...")
-                        try:
-                            proc.stdin.write("yes\n")
-                            proc.stdin.flush()
-                        except BrokenPipeError:
-                            pass
                 
                 time.sleep(0.1)
 
             console.error(f"VPN connection timed out after {timeout} seconds.")
+            
+            # Debugging: Print the last few lines of the log to diagnose the timeout
+            log_file.seek(0)
+            full_log = log_file.read()
+            if full_log:
+                lines = full_log.splitlines()
+                last_lines = lines[-10:]
+                console.print("\n[bold red]Last 10 lines of VPN log:[/bold red]")
+                for line in last_lines:
+                    console.print(f"  {line}")
+            else:
+                console.error("VPN log is empty. OpenConnect may have failed to start.")
+                
             log_file.close()
-            if os.path.exists(log_file_path):
-                os.remove(log_file_path)
             return False
                 
         except Exception as e:
