@@ -15,15 +15,15 @@
       
       
       <link rel="icon" href="assets/favicon.ico">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
-        <title>Cloudmesh VPN: Technical Implementation & Installation Guide - Cloudmesh AI Vpn</title>
+        <title>Cloudmesh VPN: Technical Implementation & Installation Guide - Cloudmesh AI VPN</title>
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="assets/stylesheets/main.ec1eaa64.min.css">
       
       
 
@@ -80,7 +80,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="index.html" title="Cloudmesh AI Vpn" class="md-header__button md-logo" aria-label="Cloudmesh AI Vpn" data-md-component="logo">
+    <a href="index.html" title="Cloudmesh AI VPN" class="md-header__button md-logo" aria-label="Cloudmesh AI VPN" data-md-component="logo">
       
   <img src="assets/logo-white.png" alt="logo">
 
@@ -93,7 +93,7 @@
       <div class="md-header__ellipsis">
         <div class="md-header__topic">
           <span class="md-ellipsis">
-            Cloudmesh AI Vpn
+            Cloudmesh AI VPN
           </span>
         </div>
         <div class="md-header__topic" data-md-component="header-topic">
@@ -177,12 +177,12 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="index.html" title="Cloudmesh AI Vpn" class="md-nav__button md-logo" aria-label="Cloudmesh AI Vpn" data-md-component="logo">
+    <a href="index.html" title="Cloudmesh AI VPN" class="md-nav__button md-logo" aria-label="Cloudmesh AI VPN" data-md-component="logo">
       
   <img src="assets/logo-white.png" alt="logo">
 
     </a>
-    Cloudmesh AI Vpn
+    Cloudmesh AI VPN
   </label>
   
   <ul class="md-nav__list" data-md-scrollfix>
@@ -736,9 +736,9 @@
 1. <strong>Sudo Warm-up</strong>: Runs <code>sudo -v</code> to cache admin credentials.
 2. <strong>Backgrounding</strong>: Uses <code>subprocess.Popen</code> and <code>os.setpgid(pid, 0)</code> to isolate the process group, ensuring the VPN stays alive after the CLI exits.
 3. <strong>Auth</strong>: Pipes password via <code>stdin</code> if provided.</p>
-<p><strong>Precise Command:</strong></p>
-<pre><code class="language-bash">sudo /opt/homebrew/bin/openconnect --protocol=anyconnect -u thf2bn -c /Users/grey/.ssh/uva/decrypted_user.pem --script='/opt/homebrew/bin/vpn-slice -v rivanna.hpc.virginia.edu 128.143.0.0/16 137.54.0.0/16' uva-anywhere-1.itc.virginia.edu
-</code></pre>
+<p><strong>Precise Command:</strong>
+<div class="highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>sudo<span class="w"> </span>/opt/homebrew/bin/openconnect<span class="w"> </span>--protocol<span class="o">=</span>anyconnect<span class="w"> </span>-u<span class="w"> </span>thf2bn<span class="w"> </span>-c<span class="w"> </span>/Users/grey/.ssh/uva/decrypted_user.pem<span class="w"> </span>--script<span class="o">=</span><span class="s1">&#39;/opt/homebrew/bin/vpn-slice -v rivanna.hpc.virginia.edu 128.143.0.0/16 137.54.0.0/16&#39;</span><span class="w"> </span>uva-anywhere-1.itc.virginia.edu
+</span></code></pre></div></p>
 <p><strong>Disconnect Logic:</strong>
 - Sends <code>SIGINT</code> (Signal 2) to the tracked PID: <code>os.kill(pid, 2)</code>.
 - Fallback: <code>sudo pkill -SIGINT openconnect</code> and <code>sudo pkill vpn-slice</code>.</p>
@@ -748,12 +748,12 @@
 1. <strong>Environment Detection</strong>: Checks for <code>/.dockerenv</code> to toggle between Host and Container mode.
 2. <strong>Execution</strong>: Uses <code>os.system()</code> (blocking call) and waits for <code>is_enabled()</code> to return True.
 3. <strong>Auth</strong>: Uses a 3-file certificate set for authentication.</p>
-<p><strong>Precise Command (Host):</strong></p>
-<pre><code class="language-bash">sudo openconnect -b -v --protocol=anyconnect --cafile=&quot;~/.ssh/uva/usher.cer&quot; --sslkey=&quot;~/.ssh/uva/user.key&quot; --certificate=&quot;~/.ssh/uva/user.crt&quot; uva-anywhere-1.itc.virginia.edu
-</code></pre>
-<p><strong>Precise Command (Docker):</strong></p>
-<pre><code class="language-bash">openconnect -b -v --protocol=anyconnect --cafile=&quot;/root/.ssh/uva/usher.cer&quot; --sslkey=&quot;/root/.ssh/uva/user.key&quot; --certificate=&quot;/root/.ssh/uva/user.crt&quot; -m 1290 uva-anywhere-1.itc.virginia.edu --script='vpn-slice --prevent-idle-timeout rivanna.hpc.virginia.edu biihead1.bii.virginia.edu biihead2.bii.virginia.edu'
-</code></pre>
+<p><strong>Precise Command (Host):</strong>
+<div class="highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>sudo<span class="w"> </span>openconnect<span class="w"> </span>-b<span class="w"> </span>-v<span class="w"> </span>--protocol<span class="o">=</span>anyconnect<span class="w"> </span>--cafile<span class="o">=</span><span class="s2">&quot;~/.ssh/uva/usher.cer&quot;</span><span class="w"> </span>--sslkey<span class="o">=</span><span class="s2">&quot;~/.ssh/uva/user.key&quot;</span><span class="w"> </span>--certificate<span class="o">=</span><span class="s2">&quot;~/.ssh/uva/user.crt&quot;</span><span class="w"> </span>uva-anywhere-1.itc.virginia.edu
+</span></code></pre></div></p>
+<p><strong>Precise Command (Docker):</strong>
+<div class="highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>openconnect<span class="w"> </span>-b<span class="w"> </span>-v<span class="w"> </span>--protocol<span class="o">=</span>anyconnect<span class="w"> </span>--cafile<span class="o">=</span><span class="s2">&quot;/root/.ssh/uva/usher.cer&quot;</span><span class="w"> </span>--sslkey<span class="o">=</span><span class="s2">&quot;/root/.ssh/uva/user.key&quot;</span><span class="w"> </span>--certificate<span class="o">=</span><span class="s2">&quot;/root/.ssh/uva/user.crt&quot;</span><span class="w"> </span>-m<span class="w"> </span><span class="m">1290</span><span class="w"> </span>uva-anywhere-1.itc.virginia.edu<span class="w"> </span>--script<span class="o">=</span><span class="s1">&#39;vpn-slice --prevent-idle-timeout rivanna.hpc.virginia.edu biihead1.bii.virginia.edu biihead2.bii.virginia.edu&#39;</span>
+</span></code></pre></div></p>
 <p><strong>Disconnect Logic:</strong>
 - Executes <code>sudo pkill -SIGINT openconnect</code>.</p>
 <hr />
@@ -768,10 +768,10 @@
 - <code>CISCO_SPLIT_INC_1_ADDR=rivanna.hpc.virginia.edu 128.143.0.0/16 137.54.0.0/16</code>
 - <code>CISCO_SPLIT_INC_1_MASK=255.255.0.0</code>
 - <code>CISCO_SPLIT_INC_1_MASKLEN=16</code></p>
-<p><strong>Precise Command:</strong></p>
-<pre><code class="language-powershell">openconnect.exe uva-anywhere-1.itc.virginia.edu --user=thf2bn --passwd-on-stdin --script=&quot;C:\...\bin\split-script-win.js&quot;
-</code></pre>
-<p><em>(Password and optional "push" for 2FA are piped into stdin)</em>.</p>
+<p><strong>Precise Command:</strong>
+<div class="highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">openconnect</span><span class="p">.</span><span class="n">exe</span> <span class="n">uva-anywhere</span><span class="p">-</span><span class="n">1</span><span class="p">.</span><span class="n">itc</span><span class="p">.</span><span class="n">virginia</span><span class="p">.</span><span class="n">edu</span> <span class="p">-</span><span class="n">-user</span><span class="p">=</span><span class="n">thf2bn</span> <span class="p">-</span><span class="n">-passwd-on-stdin</span> <span class="p">-</span><span class="n">-script</span><span class="p">=</span><span class="s2">&quot;C:\...\bin\split-script-win.js&quot;</span>
+</span></code></pre></div>
+<em>(Password and optional "push" for 2FA are piped into stdin)</em>.</p>
 <p><strong>Disconnect Logic:</strong>
 - <strong>Process</strong>: <code>psutil</code> terminates <code>openconnect.exe</code>.
 - <strong>DNS Cleanup</strong>: Runs a PowerShell command to remove NRPT rules:
@@ -779,20 +779,20 @@
 <hr />
 <h2 id="3-yaml-configuration-examples">3. YAML Configuration Examples</h2>
 <h3 id="password-authentication">Password Authentication</h3>
-<pre><code class="language-yaml">    uva:
-      username: thf2bn
-      auth: pw
-      name: UVA Anywhere
-      host: uva-anywhere-1.itc.virginia.edu
-      user: true
-      2fa: false
-      group: false
-      ip: 
-        - rivanna.hpc.virginia.edu 
-        - 128.143.0.0/16 
-        - 137.54.0.0/16
-      domain: virginia.edu
-</code></pre>
+<div class="highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="w">    </span><span class="nt">uva</span><span class="p">:</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">      </span><span class="nt">username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">thf2bn</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">      </span><span class="nt">auth</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pw</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">UVA Anywhere</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">      </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">uva-anywhere-1.itc.virginia.edu</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">      </span><span class="nt">user</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">      </span><span class="nt">2fa</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">      </span><span class="nt">group</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">      </span><span class="nt">ip</span><span class="p">:</span><span class="w"> </span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rivanna.hpc.virginia.edu</span><span class="w"> </span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">128.143.0.0/16</span><span class="w"> </span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">137.54.0.0/16</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">      </span><span class="nt">domain</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">virginia.edu</span>
+</span></code></pre></div>
 <h3 id="certificate-authentication">Certificate Authentication</h3>
 <p>```yaml
     uva:
@@ -887,7 +887,7 @@
       <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": [], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>
