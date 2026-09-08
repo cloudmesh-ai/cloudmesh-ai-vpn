@@ -1,8 +1,8 @@
-# Cloudmesh AI VPN Extension
-
-**Authors**: **Gregor von Laszewski** ([laszewski\@gmail.com](mailto:laszewski@gmail.com)), **JP Fleischer**
+# Cloudmesh AI VPN
 
 This extension provides tools to manage VPN connections, profiles, and keys, specifically tailored for UVA Anywhere VPN and other compatible providers. It focuses on a "zero-config" experience and high visibility into the connection state.
+
+**Authors**: **Gregor von Laszewski** ([laszewski@gmail.com](mailto:laszewski@gmail.com)), **JP Fleischer**
 
 ## Installation
 

@@ -19,12 +19,11 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
-    "cloudmesh-ai-cmc",
     "click",
     "rich",
     "pytest",
     "pexpect",
-    "cloudmesh-ai-common",
+    "cloudmesh-ai-cmc",
 ]
 [tool.setuptools.dynamic]
 version = {file = "VERSION"}
@@ -34,3 +33,8 @@ vpn = "cloudmesh.ai.command.vpn:register"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.cloudmesh-ai]
+category = "infrastructure"
+status = "stable"
+order = 10
